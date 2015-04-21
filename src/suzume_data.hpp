@@ -11,9 +11,13 @@ struct suzume_data {
     void insert (std::wstring const& body) const
     {
         sqlite3pp::connection dbh (dbname);
+        dbh.execute ("BEGIN;");
         auto sth = dbh.prepare ("INSERT INTO entries VALUES (NULL, ?);");
         sth.bind (1, body);
-        sth.step ();
+        if (sth.step () == SQLITE_DONE)
+            dbh.execute ("COMMIT;");
+        else
+            dbh.execute ("ROLLBACK;");
     }
 
     void recents (wjson::json& doc) const

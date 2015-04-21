@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdlib>
 #include "http.hpp"
 #include "runcgi.hpp"
 
