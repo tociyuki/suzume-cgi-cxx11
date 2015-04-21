@@ -3,16 +3,18 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 namespace http {
 
 struct request {
+    std::map<std::string,std::string> env;
     std::string method;
     std::string content_type;
     std::string content_length;
     std::istream& input;
     request (std::istream& input)
-        : method (), content_type (), content_length (), input (input) {}
+        : env (), method (), content_type (), content_length (), input (input) {}
 };
 
 struct response {

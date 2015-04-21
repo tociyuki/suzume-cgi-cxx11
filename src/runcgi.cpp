@@ -7,14 +7,21 @@ void runcgi (http::appl& app)
 {
     http::request req (std::cin);
     http::response res;
+    extern char** environ;
 
-    req.method = std::getenv ("REQUEST_METHOD");
-    char const* ct = std::getenv ("CONTENT_TYPE");
-    if (ct != nullptr)
-        req.content_type = ct;
-    char const* cl = std::getenv ("CONTENT_LENGTH");
-    if (cl != nullptr)
-        req.content_length = cl;
+    for (char** p = environ; *p; ++p) {
+        std::string s (*p);
+        std::size_t i = s.find ("=");
+        std::string k = s.substr (0, i);
+        std::string v = i < s.size () ? s.substr (i + 1) : "";
+        if (k == "REQUEST_METHOD")
+            req.method = v;
+        else if (k == "CONTENT_TYPE")
+            req.content_type = v;
+        else if (k == "CONTENT_LENGTH")
+            req.content_length = v;
+        req.env[k] = v;
+    }
     if (! app.call (req, res)) {
         res.status = "500";
         res.content_type = "text/plain; charset=UTF-8";
