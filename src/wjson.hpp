@@ -664,7 +664,7 @@ void json::dump (std::wstring& out) const
             else if (c < L' ') {
                 wchar_t buf[8];
                 unsigned int u = c;
-                std::swprintf (buf, sizeof(buf)/sizeof(buf[0]), L"\\u%4x", u);
+                std::swprintf (buf, sizeof(buf)/sizeof(buf[0]), L"\\u%04x", u);
                 out += buf;
             }
             else
