@@ -203,6 +203,6 @@ bool decode_multipart (
             }
         }
     }
-    return count == content_length;
+    return 3 == major_state && count == content_length;
 }
 }//namespace http
