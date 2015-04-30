@@ -32,12 +32,15 @@ void runcgi (http::appl& app)
         std::cout << "Status: " << res.status << "\x0d\x0a";
     if (res.status == "303") {
         std::cout << "Location: " << res.location << "\x0d\x0a";
-        std::cout << "\x0d\x0a";
     }
     else {
         std::cout << "Content-Type: " << res.content_type << "\x0d\x0a";
         std::cout << "Content-Length: " << res.body.size () << "\x0d\x0a";
-        std::cout << "\x0d\x0a" << res.body;
     }
+    for (std::size_t i = 0; i < res.headers.size (); i += 2)
+        std::cout << res.headers[i] << ": " << res.headers[i + 1] << "\x0d\x0a";
+    std::cout << "\x0d\x0a";
+    if (res.status != "303")
+        std::cout << res.body;
 }
 

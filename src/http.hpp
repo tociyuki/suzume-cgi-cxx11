@@ -18,11 +18,12 @@ struct request {
 };
 
 struct response {
+    std::vector<std::string> headers;
     std::string status;
     std::string content_type;
     std::string location;
     std::string body;
-    response () : status ("200"),
+    response () : headers (), status ("200"),
         content_type ("text/html; charset=utf-8"),
         location (), body () {}
 };
