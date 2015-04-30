@@ -5,7 +5,7 @@
 #include "encodeu8.hpp"
 
 namespace http {
-void push_pair (
+static void push_pair (
     int const state,
     std::string& name, std::string& value,
     std::vector<std::wstring>& param)
@@ -25,7 +25,7 @@ void push_pair (
 }
 
 bool decode_urlencoded (
-    std::istream& input, std::size_t contentlength,
+    std::istream& input, std::size_t const contentlength,
     std::vector<std::wstring>& param)
 {
     int state = 0;

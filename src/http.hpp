@@ -38,6 +38,15 @@ void push_pair (
     std::string& name, std::string& value,
     std::vector<std::wstring>& param);
 
+bool is_multipart_formdata (
+    std::string const& content_type,
+    std::string& boundary);
+
+bool decode_multipart (
+    std::istream& input, std::size_t const content_length,
+    std::string const& boundary,
+    std::vector<std::wstring>& param);
+
 bool decode_urlencoded (
     std::istream& input, std::size_t contentlength,
     std::vector<std::wstring>& param);
