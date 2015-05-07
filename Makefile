@@ -1,6 +1,6 @@
 PROGRAM=suzume.cgi
 OBJS=build/main.o build/encodeu8.o build/multipartformdata.o\
-     build/urlencoded.o build/runcgi.o
+     build/urlencoded.o build/runcgi.o build/wjson.o
 
 MAIN_DEPS=src/sqlite3pp.hpp src/wjson.hpp src/wmustache.hpp\
 	 src/encodeu8.hpp src/http.hpp\
@@ -36,6 +36,9 @@ build/urlencoded.o : src/urlencoded.cpp $(URLENCODED_DEPS)
 
 build/runcgi.o : src/runcgi.cpp $(RUNCGI_DEPS)
 	$(CXX) $(CXXFLAGS) -o build/runcgi.o -c src/runcgi.cpp
+
+build/wjson.o : src/wjson.cpp src/wjson.hpp
+	$(CXX) $(CXXFLAGS) -o build/wjson.o -c src/wjson.cpp
 
 clean :
 	rm -f $(PROGRAM) $(OBJS)
