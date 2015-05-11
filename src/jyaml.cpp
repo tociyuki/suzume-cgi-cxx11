@@ -61,13 +61,26 @@ static bool l_trail_comments (derivs_t& s0, int const n);
 static bool s_b_comment (derivs_t& s0);
 static bool s_l_comment (derivs_t& s0);
 
-static int c7toi (int const c)
+static int c7toi (int c)
 {
-    return ('0' <= c && c <= '9') ? c - '0'
-         : ('A' <= c && c <= 'Z') ? c + 10 - 'A'
-         : ('a' <= c && c <= 'z') ? c + 10 - 'a'
-         : ' ' == c ? 36 : '\t' == c ? 36
-         : 37;
+    static const int tbl[128] = {
+    //                                      \t  \n
+        50, 50, 50, 50, 50, 50, 50, 50, 50, 39, 40, 50, 50, 50, 50, 50,
+        50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+    //       !   "   #   $   %   &   '   (   )   *   +   ,   -   .   /
+        39, 37, 37, 37, 36, 37, 37, 37, 36, 36, 37, 36, 38, 36, 36, 36,
+    //   0   1   2   3   4   5   6   7   8   9   :   ;   <   =   >   ?
+         0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 36, 36, 36, 36, 37, 36,
+    //   @   A   B   C   D   E   F   G   H   I   J   K   L   M   N   O
+        37, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    //   P   Q   R   S   T   U   V   W   X   Y   Z   [   \   ]   ^   _
+        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 36, 38, 36, 36,
+    //   `   a   b   c   d   e   f   g   h   i   j   k   l   m   n   o
+        36, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    //   p   q   r   s   t   u   v   w   x   y   z   {   |   }   ~
+        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 38, 37, 38, 36, 50,
+    };
+    return 0 <= c && c <= 126 ? tbl[c] : 36;
 }
 
 bool load_yaml (std::wstring const& input, json& value)
@@ -373,21 +386,18 @@ static bool c_l_folded (derivs_t& s0, int const n0, json& value)
 
 static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
 {
-    static const std::wstring c_indicator (L",[]{}#&*!|>'\"%@");
-    static const std::wstring c_flow_indicator (L",[]{}");
     std::wstring lit;
     derivs_t s = s0;
     if (s.check_eos ())
         return s0.fail ();
     int ch1 = s.peek ();
-    if (c_indicator.find (ch1) != std::wstring::npos || ch1 < 0x21)
+    if (s.check (L"%I") || ! s.check (L"%S"))
         return s0.fail ();
     if ('-' == ch1 || '?' == ch1 || ':' == ch1) {
         if (! s.check (L".%S"))
             return s0.fail ();
         if (CTX_FLOW_IN == ctx || CTX_FLOW_KEY == ctx) {
-            int ch2 = s.cbegin ()[1];
-            if (c_flow_indicator.find (ch2) != std::wstring::npos)
+            if (s.check (L".%F"))
                 return s0.fail ();
         }
     }
@@ -410,8 +420,7 @@ static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
         if (s1.lookahead (L":%b"))
             break;
         if (CTX_FLOW_IN == ctx || CTX_FLOW_KEY == ctx) {
-            int ch3 = s1.peek ();
-            if (c_flow_indicator.find (ch3) != std::wstring::npos)
+            if (s1.check (L"%F"))
                 break;
         }
         if (nbreak < 0 && s.cbegin () < s1.cend ())
@@ -723,8 +732,8 @@ bool derivs_t::check_indent (int const n1, int const n2)
 
 bool derivs_t::check (std::wstring const& pattern)
 {
-    const std::wstring charset (L"dxals");
-    static int const range[]{0,10, 0,16, 10,36, 0,36, 36,37};
+    const std::wstring charset (L"dxIFs");
+    static int const range[]{0,10, 0,16, 37,39, 38,39, 39,40};
     int n1, n2, lower, upper;
     std::wstring::const_iterator p = pend = pbegin;
     std::wstring::const_iterator ip = pattern.begin ();
@@ -757,7 +766,6 @@ bool derivs_t::check (std::wstring const& pattern)
             else if ('b' == exact) {
                 if (p < peos && ' ' < *p)
                     return false;
-                ++ip;
                 continue;
             }
         }
