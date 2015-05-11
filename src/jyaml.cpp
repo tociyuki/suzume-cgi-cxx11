@@ -391,7 +391,7 @@ static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
     if (s.check_eos ())
         return s0.fail ();
     int ch1 = s.peek ();
-    if (s.check (L"%I") || ! s.check (L"%S"))
+    if (! s.check (L"%P"))
         return s0.fail ();
     if ('-' == ch1 || '?' == ch1 || ':' == ch1) {
         if (! s.check (L".%S"))
@@ -732,8 +732,8 @@ bool derivs_t::check_indent (int const n1, int const n2)
 
 bool derivs_t::check (std::wstring const& pattern)
 {
-    const std::wstring charset (L"dxIFs");
-    static int const range[]{0,10, 0,16, 37,39, 38,39, 39,40};
+    const std::wstring charset (L"dxPFs");
+    static int const range[]{0,10, 0,16, 0,37, 38,39, 39,40};
     int n1, n2, lower, upper;
     std::wstring::const_iterator p = pend = pbegin;
     std::wstring::const_iterator ip = pattern.begin ();
