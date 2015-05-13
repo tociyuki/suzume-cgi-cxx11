@@ -300,13 +300,15 @@ static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& val
     int const ctx = (CTX_BLOCK_KEY == ctx0 || CTX_FLOW_KEY == ctx0 ) ? CTX_FLOW_KEY
                   : CTX_FLOW_IN;
     for (;;) {
-        json key;
+        json key (L"");
         json item;
-        if (! (ns_plain (s, n, ctx, key)
+        int got = 0;
+        if (ns_plain (s, n, ctx, key)
                 || c_single_quoted (s, n, ctx, key)
-                || c_double_quoted (s, n, ctx, key)))
-            break;
-        s_separate (s, n, ctx);
+                || c_double_quoted (s, n, ctx, key)) {
+            s_separate (s, n, ctx);
+            ++got;
+        }
         if (s.scan (L":")) {
             s_separate (s, n, ctx);
             if (! (s.lookahead (L",") || s.lookahead (L"}"))) {
@@ -314,7 +316,10 @@ static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& val
                     break;
             }
             s_separate (s, n,ctx);
+            ++got;
         }
+        if (got == 0)
+            break;
         value.as<object> ()[key.as<std::wstring> ()] = item;
         if (! s.scan (L","))
             break;
