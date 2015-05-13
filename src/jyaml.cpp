@@ -37,6 +37,8 @@ private:
 
 static int c7toi (int const c);
 static bool l_document (derivs_t& s, json& value);
+static bool c_forbidden (derivs_t s);
+static bool c_directive (derivs_t& s0);
 static bool s_l_block_node (derivs_t& s0, int const n, int const ctx, json& value);
 static bool s_l_block_indented (derivs_t& s0, int const n, int const ctx, json& value);
 static bool l_block_sequence (derivs_t& s0, int const n, json& value);
@@ -59,6 +61,7 @@ static bool s_flow_folded (derivs_t& s0, int const n, int& nbreak);
 static bool c_b_block_header (derivs_t& s0, int const n, int& m, int& t);
 static bool l_trail_comments (derivs_t& s0, int const n);
 static bool s_b_comment (derivs_t& s0);
+static bool l_comment (derivs_t& s0);
 static bool s_l_comment (derivs_t& s0);
 
 static int c7toi (int c)
@@ -89,11 +92,43 @@ bool load_yaml (std::wstring const& input, json& value)
     return l_document (s, value);
 }
 
-static bool l_document (derivs_t& s, json& value)
+static bool l_document (derivs_t& s0, json& value)
 {
+    derivs_t s = s0;
     s_l_comment (s);
-    s.scan (L"---%b");
-    return s_l_block_node (s, -1, CTX_BLOCK_IN, value) && s.check_eos ();
+    while (s.scan (L"^%.%.%.%b")) {
+        if (! s_l_comment (s))
+            return s0.fail ();
+    }
+    int ndirective = 0;
+    while (c_directive (s))
+        ++ndirective;
+    bool dirend = false;
+    if (s.scan (L"---%b"))
+        dirend = true;
+    if (ndirective > 0 && ! dirend)
+        return s0.fail ();
+    if (! s_l_block_node (s, -1, CTX_BLOCK_IN, value)) {
+        if (! s_l_comment (s))
+            return s0.fail ();
+        value = json ();
+    }
+    if (! s.check_eos () && ! c_forbidden (s))
+        return s0.fail ();
+    return s.match ();
+}
+
+static bool c_forbidden (derivs_t s)
+{
+    return s.check (L"^---%b") || s.check (L"^%.%.%.%b");
+}
+
+static bool c_directive (derivs_t& s0)
+{
+    derivs_t s = s0;
+    if (s.scan (L"%%.{0,*}") && s_l_comment (s))
+        return s0.match (s);
+    return s0.fail ();
 }
 
 static bool s_l_block_node (derivs_t& s0, int const n, int const ctx, json& value)
@@ -112,7 +147,7 @@ static bool s_l_block_node (derivs_t& s0, int const n, int const ctx, json& valu
             && ns_flow_node (s, n + 1, CTX_FLOW_OUT, value)
             && s_l_comment (s))
         return s0.match (s);
-    s = s0;
+    value = json ();
     return s0.fail ();
 }
 
@@ -304,6 +339,8 @@ static bool c_l_literal (derivs_t& s0, int const n0, json& value)
     for (;;) {
         derivs_t s1 = s;
         derivs_t s2 = s;
+        if (c_forbidden (s))
+            break;
         if (s1.scan_indent (0, n) && s1.check (L"\n")) {
             s.match (s1);
             ++nbreak;
@@ -345,6 +382,8 @@ static bool c_l_folded (derivs_t& s0, int const n0, json& value)
         derivs_t s1 = s;
         derivs_t s2 = s;
         derivs_t s3 = s;
+        if (c_forbidden (s))
+            break;
         if (s1.scan_indent (0, n) && s1.check (L"\n")) {
             s.match (s1);
             ++nbreak;
@@ -388,7 +427,7 @@ static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
 {
     std::wstring lit;
     derivs_t s = s0;
-    if (s.check_eos ())
+    if (s.check_eos () || c_forbidden (s))
         return s0.fail ();
     int ch1 = s.peek ();
     if (! s.check (L"%P"))
@@ -414,13 +453,17 @@ static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
         if ('\n' == s1.peek ()) {
             if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
                 break;
+            derivs_t la = s1;
+            la.get ();
+            if (c_forbidden (la))
+                break;
             if (! s_flow_folded (s1, n, nbreak))
                 break;
         }
         if (s1.lookahead (L":%b"))
             break;
         if (CTX_FLOW_IN == ctx || CTX_FLOW_KEY == ctx) {
-            if (s1.check (L"%F"))
+            if (s1.lookahead (L":%F") || s1.check (L"%F"))
                 break;
         }
         if (nbreak < 0 && s.cbegin () < s1.cend ())
@@ -443,17 +486,12 @@ static bool c_single_quoted (derivs_t& s0, int const n, int const ctx, json& val
     if (! s.scan (L"'"))
         return s0.fail ();
     for (;;) {
-        int ch = s.peek ();
-        if ('\'' == ch) {
-            s.get ();
-            ch = s.peek ();
-            if ('\'' == ch) {
-                lit.push_back (ch);
-                s.get ();
-                continue;
-            }
-            break;
+        if (s.scan (L"''")) {
+            lit.push_back ('\'');
+            continue;
         }
+        if (s.scan (L"'"))
+            break;
         if (s.lookahead (L"%s{0,*}\n")) {
             if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
                 return s0.fail ();
@@ -467,6 +505,7 @@ static bool c_single_quoted (derivs_t& s0, int const n, int const ctx, json& val
             }
             return s0.fail ();
         }
+        int ch = s.peek ();
         if (! ('\t' == ch || ' ' <= ch))
             return s0.fail ();
         lit.push_back (s.get ());
@@ -631,14 +670,21 @@ static bool s_b_comment (derivs_t& s0)
          || s0.scan (L"%s{1,*}#.{0,*}$\n{0,1}");
 }
 
+static bool l_comment (derivs_t& s0)
+{
+    derivs_t s = s0;
+    while (! s.check_eos ())
+        if (! (s.scan (L"%s{0,*}$\n{0,1}") || s.scan (L"%s{0,*}#.{0,*}$\n{0,1}")))
+            break;
+    return s0.match (s);
+}
+
 static bool s_l_comment (derivs_t& s0)
 {
     derivs_t s = s0;
     if (! (s_b_comment (s) || s.check_bol ()))
         return s0.fail ();
-    while (! s.check_eos ())
-        if (! (s.scan (L"%s{0,*}$\n{0,1}") || s.scan (L"%s{0,*}#.{0,*}$\n{0,1}")))
-            break;
+    l_comment (s);
     return s0.match (s);
 }
 
@@ -698,18 +744,16 @@ bool derivs_t::lookahead (std::wstring const& pattern)
 
 bool derivs_t::scan (std::wstring const& pattern)
 {
-    bool good = check (pattern);
-    if (good)
-        pbegin = pend;
-    return good;
+    if (! check (pattern))
+        return false;
+    return match ();
 }
 
 bool derivs_t::scan_indent (int const n1, int const n2)
 {
-    bool good = check_indent (n1, n2);
-    if (good)
-        pbegin = pend;
-    return good;
+    if (! check_indent (n1, n2))
+        return false;
+    return match ();
 }
 
 bool derivs_t::check_indent (int const n1, int const n2)
@@ -732,9 +776,6 @@ bool derivs_t::check_indent (int const n1, int const n2)
 
 bool derivs_t::check (std::wstring const& pattern)
 {
-    const std::wstring charset (L"dxPFs");
-    static int const range[]{0,10, 0,16, 0,37, 38,39, 39,40};
-    int n1, n2, lower, upper;
     std::wstring::const_iterator p = pend = pbegin;
     std::wstring::const_iterator ip = pattern.begin ();
     while (ip < pattern.end ()) {
@@ -752,24 +793,19 @@ bool derivs_t::check (std::wstring const& pattern)
         }
         int exact = *ip++;
         bool dot = ('.' == exact);
-        lower = upper = 0;
+        int lower = 0; int upper = 0;
         if ('%' == exact && ip < pattern.end ()) {
-            int i;
             exact = *ip++;
-            if ((i = charset.find (exact)) != std::wstring::npos) {
-                lower = range[i * 2];
-                upper = range[i * 2 + 1];
-            }
-            else if ('S' == exact) {
-                upper = -1;
-            }
-            else if ('b' == exact) {
+            if ('b' == exact) {
                 if (p < peos && ' ' < *p)
                     return false;
                 continue;
             }
+            lower = 'F' == exact ? 38 : 's' == exact ? 39 : 0;
+            upper = 'd' == exact ? 10 : 'x' == exact ? 16 : 'P' == exact ? 37
+                  : 'F' == exact ? 39 : 's' == exact ? 40 : 'S' == exact ? -1 : 0;
         }
-        n1 = n2 = 1;
+        int n1 = 1; int n2 = 1;
         if (ip + 4 < pattern.end () && L'{' == *ip && L',' == ip[2] && L'}' == ip[4]) {
             n1 = c7toi (ip[1]);
             n2 = c7toi (ip[3]);
@@ -783,8 +819,7 @@ bool derivs_t::check (std::wstring const& pattern)
                 ++p;
             else if (upper == -1 && 'S' == exact && ' ' < c)
                 ++p;
-            else if (! dot
-                    && ((upper == 0 && exact == c) || (lower <= x && x < upper)))
+            else if (! dot && ((upper == 0 && exact == c) || (lower <= x && x < upper)))
                 ++p;
             else if (i < n1)
                 return false;
