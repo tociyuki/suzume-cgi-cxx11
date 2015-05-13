@@ -48,6 +48,7 @@ static bool l_block_mapping (derivs_t& s0, int const n, json& value);
 static bool ns_l_compact_mapping (derivs_t& s0, int const n, json& value);
 static bool ns_l_block_map_entry (derivs_t& s0, int const n, json& value);
 static bool ns_flow_node (derivs_t& s0, int const n, int const ctx, json& value);
+static bool ns_flow_scalar (derivs_t& s0, int const n, int const ctx, json& value);
 static bool c_flow_sequence (derivs_t& s0, int const n, int const ctx0, json& value);
 static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& value);
 static bool c_l_literal (derivs_t& s0, int const n0, json& value);
@@ -237,13 +238,10 @@ static bool ns_l_compact_mapping (derivs_t& s0, int const n, json& value)
 
 static bool ns_l_block_map_entry (derivs_t& s0, int const n, json& value)
 {
-    json key;
+    json key (L"");
     json item;
     derivs_t s = s0;
-    if (! ns_flow_node (s, 0, CTX_BLOCK_KEY, key))
-        return s0.fail ();
-    if (! key.is<std::wstring> ())
-        return s0.fail ();
+    ns_flow_scalar (s, 0, CTX_BLOCK_KEY, key);
     if (! s.scan (L"%s{0,*}:"))
         return s0.fail ();
     if (s_l_block_node (s, n, CTX_BLOCK_OUT, item)) {
@@ -257,13 +255,18 @@ static bool ns_l_block_map_entry (derivs_t& s0, int const n, json& value)
     return s0.fail ();
 }
 
-static bool ns_flow_node (derivs_t& s0, int const n, int const ctx, json& value)
+static bool ns_flow_scalar (derivs_t& s0, int const n, int const ctx, json& value)
 {
     return ns_plain (s0, n, ctx, value)
-        || c_flow_sequence (s0, n, ctx, value)
-        || c_flow_mapping (s0, n, ctx, value)
         || c_single_quoted (s0, n, ctx, value)
         || c_double_quoted (s0, n, ctx, value);
+}
+
+static bool ns_flow_node (derivs_t& s0, int const n, int const ctx, json& value)
+{
+    return ns_flow_scalar (s0, n, ctx, value)
+        || c_flow_sequence (s0, n, ctx, value)
+        || c_flow_mapping (s0, n, ctx, value);
 }
 
 static bool c_flow_sequence (derivs_t& s0, int const n, int const ctx0, json& value)
@@ -303,18 +306,16 @@ static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& val
         json key (L"");
         json item;
         int got = 0;
-        if (ns_plain (s, n, ctx, key)
-                || c_single_quoted (s, n, ctx, key)
-                || c_double_quoted (s, n, ctx, key)) {
+        derivs_t la = s;
+        if (ns_flow_scalar (s, n, ctx, key)) {
             s_separate (s, n, ctx);
             ++got;
         }
         if (s.scan (L":")) {
             s_separate (s, n, ctx);
-            if (! (s.lookahead (L",") || s.lookahead (L"}"))) {
-                if (! ns_flow_node (s, n, ctx, item))
-                    break;
-            }
+            if (! s.lookahead (L",") && ! s.lookahead (L"}")
+                    && ! ns_flow_node (s, n, ctx, item))
+                break;
             s_separate (s, n,ctx);
             ++got;
         }
