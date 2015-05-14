@@ -164,10 +164,8 @@ private:
                     --level;
                 else if ('{' == *s)
                     ++level;
-                if (level == 0) {
-                    ++s;
-                    return COMMENT;
-                }
+                if (level == 1)
+                    state = 6;
             }
         }
         return PLAIN;
