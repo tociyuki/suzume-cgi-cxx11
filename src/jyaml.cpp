@@ -51,18 +51,15 @@ static bool ns_flow_node (derivs_t& s0, int const n, int const ctx, json& value)
 static bool ns_flow_scalar (derivs_t& s0, int const n, int const ctx, json& value);
 static bool c_flow_sequence (derivs_t& s0, int const n, int const ctx0, json& value);
 static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& value);
-static bool c_l_literal (derivs_t& s0, int const n0, json& value);
-static bool c_l_folded (derivs_t& s0, int const n0, json& value);
+static bool c_l_scalar (derivs_t& s0, int const n0, json& value);
 static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value);
-static bool c_single_quoted (derivs_t& s0, int const n, int const ctx, json& value);
-static bool c_double_quoted (derivs_t& s0, int const n, int const ctx, json& value);
-static bool s_separate (derivs_t& s0, int const n, int const ctx);
-static bool s_separate_in_line (derivs_t& s0);
+static bool c_quoted (derivs_t& s0, int const n, int const ctx, json& value);
+static bool c_escaped (derivs_t& s, int const n, int const ctx, std::wstring& lit);
 static bool s_flow_folded (derivs_t& s0, int const n, int& nbreak);
 static bool c_b_block_header (derivs_t& s0, int const n, int& m, int& t);
 static bool l_trail_comments (derivs_t& s0, int const n);
+static bool s_separate (derivs_t& s0, int const n, int const ctx);
 static bool s_b_comment (derivs_t& s0);
-static bool l_comment (derivs_t& s0);
 static bool s_l_comment (derivs_t& s0);
 
 static int c7toi (int c)
@@ -135,8 +132,7 @@ static bool c_directive (derivs_t& s0)
 static bool s_l_block_node (derivs_t& s0, int const n, int const ctx, json& value)
 {
     derivs_t s = s0;
-    if (s_separate (s, n + 1, ctx)
-            && (c_l_literal (s, n, value) || c_l_folded (s, n, value)))
+    if (s_separate (s, n + 1, ctx) && c_l_scalar (s, n, value))
         return s0.match (s);
     s = s0;
     int n1 = CTX_BLOCK_OUT == ctx ? n - 1 : n;
@@ -257,9 +253,7 @@ static bool ns_l_block_map_entry (derivs_t& s0, int const n, json& value)
 
 static bool ns_flow_scalar (derivs_t& s0, int const n, int const ctx, json& value)
 {
-    return ns_plain (s0, n, ctx, value)
-        || c_single_quoted (s0, n, ctx, value)
-        || c_double_quoted (s0, n, ctx, value);
+    return ns_plain (s0, n, ctx, value) || c_quoted (s0, n, ctx, value);
 }
 
 static bool ns_flow_node (derivs_t& s0, int const n, int const ctx, json& value)
@@ -331,54 +325,16 @@ static bool c_flow_mapping (derivs_t& s0, int const n, int const ctx0, json& val
     return s0.match (s);
 }
 
-static bool c_l_literal (derivs_t& s0, int const n0, json& value)
+static bool c_l_scalar (derivs_t& s0, int const n0, json& value)
 {
     std::wstring lit;
     derivs_t s = s0;
     int m;
     int t;
-    if (! (s.scan (L"|") && c_b_block_header (s, n0, m, t)))
+    if (! s0.lookahead (L"|") && ! s0.lookahead (L">"))
         return s0.fail ();
-    int n = n0 + m;
-    int nbreak = 0;
-    bool clipable = false;
-    for (;;) {
-        derivs_t s1 = s;
-        derivs_t s2 = s;
-        if (c_forbidden (s))
-            break;
-        if (s1.scan_indent (0, n) && s1.check (L"\n")) {
-            s.match (s1);
-            ++nbreak;
-        }
-        else if (s2.scan_indent (n, n) && s2.check (L".{1,*}\n")) {
-            if (nbreak > 0)
-                lit.append (nbreak, '\n');
-            lit.append (s2.cbegin (), s2.cend () - 1);
-            s.match (s2);
-            nbreak = 1;
-            clipable = true;
-        }
-        else
-            break;
-    }
-    if ('+' == t && nbreak > 0)
-        lit.append (nbreak, '\n');
-    else if (' ' == t && clipable)
-        lit.push_back ('\n');
-    if (! l_trail_comments (s, n))
-        return s0.fail ();
-    value = json (lit);
-    return s0.match (s);
-}
-
-static bool c_l_folded (derivs_t& s0, int const n0, json& value)
-{
-    std::wstring lit;
-    derivs_t s = s0;
-    int m;
-    int t;
-    if (! (s.scan (L">") && c_b_block_header (s, n0, m, t)))
+    int indicator = s.get ();
+    if (! c_b_block_header (s, n0, m, t))
         return s0.fail ();
     int n = n0 + m;
     int nbreak = 0;
@@ -414,7 +370,7 @@ static bool c_l_folded (derivs_t& s0, int const n0, json& value)
             s.match (s3);
             nbreak = 1;
             clipable = true;
-            foldable = true;
+            foldable = '>' == indicator;
         }
         else
             break;
@@ -485,18 +441,20 @@ static bool ns_plain (derivs_t& s0, int const n, int const ctx, json& value)
     return s0.match (s);
 }
 
-static bool c_single_quoted (derivs_t& s0, int const n, int const ctx, json& value)
+static bool c_quoted (derivs_t& s0, int const n, int const ctx, json& value)
 {
     std::wstring lit;
     derivs_t s = s0;
-    if (! s.scan (L"'"))
+    if (! s.check (L"\"") && ! s.check (L"'"))
         return s0.fail ();
+    int indicator = s.get ();
+    std::wstring quote (1, indicator);
     for (;;) {
-        if (s.scan (L"''")) {
+        if ('\'' == indicator && s.scan (L"''")) {
             lit.push_back ('\'');
             continue;
         }
-        if (s.scan (L"'"))
+        if (s.scan (quote))
             break;
         if (s.lookahead (L"%s{0,*}\n")) {
             if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
@@ -511,107 +469,69 @@ static bool c_single_quoted (derivs_t& s0, int const n, int const ctx, json& val
             }
             return s0.fail ();
         }
-        int ch = s.peek ();
-        if (! ('\t' == ch || ' ' <= ch))
-            return s0.fail ();
-        lit.push_back (s.get ());
-    }
-    value = json (lit);
-    return s0.match (s);
-}
-
-static bool c_double_quoted (derivs_t& s0, int const n, int const ctx, json& value)
-{
-    std::wstring lit;
-    derivs_t s = s0;
-    if (! s.scan (L"\""))
-        return s0.fail ();
-    for (;;) {
-        int ch = s.peek ();
-        if ('"' == ch)
-            break;
-        if (s.lookahead (L"%s{0,*}\n")) {
-            if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
-                return s0.fail ();
-            int nbreak = 0;
-            if (s_flow_folded (s, n, nbreak)) {
-                if (0 == nbreak)
-                    lit.push_back (' ');
-                else
-                    lit.append (nbreak, '\n');
-                continue;
-            }
-            return s0.fail ();
-        }
-        if ('\t' != ch && ch < ' ')
-            return s0.fail ();
-        if ('\\' != ch) {
-            lit.push_back (s.get ());
-            continue;
-        }
-        if (s.check (L"\\x%x%x") || s.check (L"\\u%x{4,4}") || s.check (L"\\U%x{8,8}")) {
-            int x = 0;
-            for (auto p = s.cbegin () + 2; p < s.cend (); ++p)
-                x = x * 16 + c7toi (*p);
-            lit.push_back (x);
+        if (s.check (L"%s{1,*}")) {
+            lit.append (s.cbegin (), s.cend ());
             s.match (s);
             continue;
         }
-        s.get ();
-        int esc = s.peek ();
-        if ('\n' == esc) {
-            if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
-                return s0.fail ();
-            int nbreak = 0;
-            if (s_flow_folded (s, n, nbreak)) {
-                if (nbreak > 0)
-                    lit.append (nbreak, '\n');
-                continue;
-            }
+        int ch = s.peek ();
+        if ('\t' != ch && ch < ' ')
             return s0.fail ();
+        if ('\'' == indicator || '\\' != ch) {
+            lit.push_back (s.get ());
+            continue;
         }
-        switch (esc) {
-        case '0': lit.push_back ('\0'); break;
-        case 'a': lit.push_back ('\a'); break;
-        case 'b': lit.push_back ('\b'); break;
-        case 't': case '\t': lit.push_back ('\t'); break;
-        case 'n': lit.push_back ('\n'); break;
-        case 'v': lit.push_back ('\x0b'); break;
-        case 'f': lit.push_back ('\f'); break;
-        case 'r': lit.push_back ('\r'); break;
-        case 'e': lit.push_back ('\x1b'); break;
-        case 'N': lit.push_back (0x85); break;
-        case '_': lit.push_back (0xa0); break;
-        case 'L': lit.push_back (0x2028); break;
-        case 'P': lit.push_back (0x2029); break;
-        default:
-            if (' ' <= esc)
-                lit.push_back (esc);
-            else
-                return s0.fail ();
-        }
-        s.get ();
+        if (! c_escaped (s, n, ctx, lit))
+            return s0.fail ();
     }
-    if (! s.scan (L"\""))
-        return s0.fail ();
     value = json (lit);
     return s0.match (s);
 }
 
-static bool s_separate (derivs_t& s0, int const n, int const ctx)
+static bool c_escaped (derivs_t& s, int const n, int const ctx, std::wstring& lit)
 {
-    if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
-        return s_separate_in_line (s0);
-    int m = n < 0 ? 0 : n;
-    derivs_t s = s0;
-    if (s_l_comment (s) && s.scan_indent (m, m) && s.scan (L"%s{0,*}"))
-        return s0.match (s);
-    return s_separate_in_line (s0);
-}
-
-static bool s_separate_in_line (derivs_t& s0)
-{
-    return s0.scan (L"%s{1,*}") || s0.check_bol ();
+    s.get (); // read '\\'
+    if (s.check (L"x%x%x") || s.check (L"u%x{4,4}") || s.check (L"U%x{8,8}")) {
+        int x = 0;
+        for (auto p = s.cbegin () + 1; p < s.cend (); ++p)
+            x = x * 16 + c7toi (*p);
+        lit.push_back (x);
+        return s.match (s);
+    }
+    int esc = s.peek ();
+    if ('\n' == esc) {
+        if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
+            return s.fail ();
+        int nbreak = 0;
+        if (s_flow_folded (s, n, nbreak)) {
+            if (nbreak > 0)
+                lit.append (nbreak, '\n');
+            return s.match (s);
+        }
+        return s.fail ();
+    }
+    switch (esc) {
+    case '0': lit.push_back ('\0'); break;
+    case 'a': lit.push_back ('\a'); break;
+    case 'b': lit.push_back ('\b'); break;
+    case 't': case '\t': lit.push_back ('\t'); break;
+    case 'n': lit.push_back ('\n'); break;
+    case 'v': lit.push_back ('\x0b'); break;
+    case 'f': lit.push_back ('\f'); break;
+    case 'r': lit.push_back ('\r'); break;
+    case 'e': lit.push_back ('\x1b'); break;
+    case 'N': lit.push_back (0x85); break;
+    case '_': lit.push_back (0xa0); break;
+    case 'L': lit.push_back (0x2028); break;
+    case 'P': lit.push_back (0x2029); break;
+    default:
+        if (' ' <= esc)
+            lit.push_back (esc);
+        else
+            return s.fail ();
+    }
+    s.get ();
+    return s.match ();
 }
 
 static bool s_flow_folded (derivs_t& s0, int const n, int& nbreak)
@@ -669,6 +589,17 @@ static bool l_trail_comments (derivs_t& s0, int const n)
     return s0.match (s);
 }
 
+static bool s_separate (derivs_t& s0, int const n, int const ctx)
+{
+    if (CTX_BLOCK_KEY == ctx || CTX_FLOW_KEY == ctx)
+        return s0.scan (L"%s{1,*}") || s0.check_bol ();
+    int m = n < 0 ? 0 : n;
+    derivs_t s = s0;
+    if (s_l_comment (s) && s.scan_indent (m, m) && s.scan (L"%s{0,*}"))
+        return s0.match (s);
+    return s0.scan (L"%s{1,*}") || s0.check_bol ();
+}
+
 static bool s_b_comment (derivs_t& s0)
 {
     return s0.scan (L"%s{0,*}$\n{0,1}")
@@ -676,21 +607,14 @@ static bool s_b_comment (derivs_t& s0)
          || s0.scan (L"%s{1,*}#.{0,*}$\n{0,1}");
 }
 
-static bool l_comment (derivs_t& s0)
-{
-    derivs_t s = s0;
-    while (! s.check_eos ())
-        if (! (s.scan (L"%s{0,*}$\n{0,1}") || s.scan (L"%s{0,*}#.{0,*}$\n{0,1}")))
-            break;
-    return s0.match (s);
-}
-
 static bool s_l_comment (derivs_t& s0)
 {
     derivs_t s = s0;
     if (! (s_b_comment (s) || s.check_bol ()))
         return s0.fail ();
-    l_comment (s);
+    while (! s.check_eos ())
+        if (! (s.scan (L"%s{0,*}$\n{0,1}") || s.scan (L"%s{0,*}#.{0,*}$\n{0,1}")))
+            break;
     return s0.match (s);
 }
 
