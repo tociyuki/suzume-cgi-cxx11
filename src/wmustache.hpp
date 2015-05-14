@@ -101,7 +101,7 @@ private:
                 ++level;
             ++s;
         }
-        if ('}' != *s)
+        if (s >= eos || '}' != *s)
             return PLAIN;
         ++s;
         return COMMENT;
