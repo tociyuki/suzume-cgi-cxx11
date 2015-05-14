@@ -8,7 +8,7 @@
 
 class wmustache final {
 public:
-    enum {ENDMARK, GETHTML, GETASIS, SECTION, UNLESS, ENDSECT, PLAIN}; 
+    enum {ENDMARK, GETHTML, GETASIS, SECTION, UNLESS, ENDSECT, PLAIN, COMMENT}; 
 
     struct instruction {
         int op;
@@ -81,21 +81,112 @@ private:
     wmustache& operator= (wmustache const&);
     wmustache& operator= (wmustache&&);
 
-    int next_token (
-        std::wstring::const_iterator& s,
+
+    bool keychar (int ch)
+    {
+        return ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
+             || ('0' <= ch && ch <= '9') || '_' == ch || '?' == ch || '!' == ch
+             || '/' == ch || '.' == ch || '-' == ch;
+    }
+
+    int scan_markup (std::wstring::const_iterator& s,
         std::wstring::const_iterator const eos,
-        std::wstring& plain,
         std::wstring& key)
     {
-        plain.clear ();
         key.clear ();
-        while (s < eos) {
+        s += 2; // skip L"{{"
+        int state = 2;
+        int kind = PLAIN;
+        int level = 0;
+        std::wstring::const_iterator beginkey = s;
+        std::wstring::const_iterator endkey = s;
+        for (; s < eos; ++s) {
+            if (2 == state) {
+                kind = GETHTML;
+                switch (*s) {
+                case '{': kind = GETASIS; state = 7; break;
+                case '&': kind = GETASIS; state = 3; break;
+                case '#': kind = SECTION; state = 3; break;
+                case '^': kind = UNLESS;  state = 3; break;
+                case '/': kind = ENDSECT; state = 3; break;
+                case '!': kind = COMMENT; level = 2; state = 12; break;
+                case ' ': case '\t': case '\n': state = 3; break;
+                default:
+                    if (keychar (*s)) {
+                        beginkey = s;
+                        state = 4;
+                    }
+                    else
+                        return PLAIN;
+                }
+            }
+            else if (3 == state || 7 == state) {
+                if (keychar (*s)) {
+                    beginkey = s;
+                    ++state;
+                }
+                else if (! (' ' == *s || '\t' == *s || '\n' == *s))
+                    return PLAIN;
+            }
+            else if (4 == state || 8 == state) {
+                endkey = s;
+                if (' ' == *s || '\t' == *s || '\n' == *s)
+                    ++state;
+                else if ('}' == *s)
+                    state += 2;
+                else if (! keychar (*s))
+                    return PLAIN;
+            }
+            else if (5 == state || 9 == state) {
+                if ('}' == *s)
+                    ++state;
+                else if (! (' ' == *s || '\t' == *s || '\n' == *s))
+                    return PLAIN;
+            }
+            else if (6 == state) {
+                if ('}' == *s) {
+                    key.assign (beginkey, endkey);
+                    ++s;
+                    if (s < eos && kind >= SECTION && kind <= ENDSECT && '\n' == *s)
+                        ++s;
+                    return kind;
+                }
+                else
+                    return PLAIN;
+            }
+            else if (10 == state) {
+                if ('}' == *s)
+                    state = 6;
+                else
+                    return PLAIN;
+            }
+            else if (12 == state) {
+                if ('}' == *s)
+                    --level;
+                else if ('{' == *s)
+                    ++level;
+                if (level == 0) {
+                    ++s;
+                    return COMMENT;
+                }
+            }
+        }
+        return PLAIN;
+    }
+
+    int next_token (std::wstring::const_iterator& s,
+        std::wstring::const_iterator const eos,
+        std::wstring& plain, std::wstring& key)
+    {
+        plain.clear ();
+        int kind = ENDMARK;
+        for (;;) {
             std::wstring::const_iterator save1 = s;
             while (s < eos) {
                 if (s + 1 < eos) {
-                    if (L'{' != s[1])
+                    if ('{' != s[1])
                         ++s;
-                    else if (L'{' == s[0])
+                    else if ('{' == s[0])
                         break;
                 }
                 ++s;
@@ -103,62 +194,16 @@ private:
             std::wstring::const_iterator save2 = s;
             if (save1 < save2)
                 plain.append (save1, save2);
-            if (s >= eos)
+            kind = ENDMARK;
+            if (s == eos)
                 break;
-            s += 2;
-            wchar_t mark = s < eos ? *s : L'\0';
-            if (L'!' == mark) {
-                ++s;
-                int level = 2;
-                while (s < eos && level > 0) {
-                    if (L'}' == *s)
-                        --level;
-                    else if (L'{' == *s)
-                        ++level;
-                    ++s;
-                }
-                continue;
-            }
-            int kind = L'{' == mark || L'&' == mark ? GETASIS
-                     : L'#' == mark ? SECTION
-                     : L'^' == mark ? UNLESS
-                     : L'/' == mark ? ENDSECT
-                     : GETHTML;
-            if (GETHTML != kind)
-                ++s;
-            while (s < eos && (L' ' == *s || L'\t' == *s || L'\r' == *s || L'\n' == *s))
-                ++s;
-            std::wstring::const_iterator save3 = s;
-            while (s < eos && ((L'0' <= *s && *s <= L'9')
-                    || (L'A' <= *s && *s <= L'Z') || (L'a' <= *s && *s <= L'z')
-                    || L'?' == *s || L'!' == *s || L'/' == *s || L'.' == *s || L'-' == *s
-                    || L'_' == *s))
-                ++s;
-            std::wstring::const_iterator save4 = s;
-            while (s < eos && (L' ' == *s || L'\t' == *s || L'\r' == *s || L'\n' == *s))
-                ++s;
-            if (save3 < save4 && s + 1 < eos && L'}' == s[1] && L'}' == s[0]) {
-                s += 2;
-                if (L'{' == mark) {
-                    if (s < eos && L'}' == *s)
-                        ++s;
-                    else
-                        kind = PLAIN;
-                }
-                if (L'#' == mark || L'^' == mark || L'/' == mark) {
-                    if (s < eos && L'\n' == *s)
-                        ++s;
-                }
-            }
-            else
-                kind = PLAIN;
-            if (kind != PLAIN) {
-                key.append (save3, save4);
-                return kind;
-            }
-            plain.append (save2, s);
+            kind = scan_markup (s, eos, key);
+            if (kind < PLAIN)
+                break;
+            if (kind == PLAIN && save2 < s)
+                plain.append (save2, s);
         }
-        return ENDMARK;
+        return kind;
     }
 
     void render_section (
