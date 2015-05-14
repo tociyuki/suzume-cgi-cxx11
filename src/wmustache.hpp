@@ -81,7 +81,6 @@ private:
     wmustache& operator= (wmustache const&);
     wmustache& operator= (wmustache&&);
 
-
     bool keychar (int ch)
     {
         return ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
@@ -200,8 +199,10 @@ private:
             kind = scan_markup (s, eos, key);
             if (kind < PLAIN)
                 break;
-            if (kind == PLAIN && save2 < s)
+            if (kind == PLAIN) {
+                s = save2 + 2;
                 plain.append (save2, s);
+            }
         }
         return kind;
     }
