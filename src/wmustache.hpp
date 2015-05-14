@@ -88,85 +88,77 @@ private:
              || '/' == ch || '.' == ch || '-' == ch;
     }
 
+    int skip_comment (std::wstring::const_iterator& s,
+        std::wstring::const_iterator const eos)
+    {
+        int level = 2;
+        while (level > 1) {
+            if (s >= eos)
+                return PLAIN;
+            if ('}' == *s)
+                --level;
+            else if ('{' == *s)
+                ++level;
+            ++s;
+        }
+        if ('}' != *s)
+            return PLAIN;
+        ++s;
+        return COMMENT;
+    }
+
     int scan_markup (std::wstring::const_iterator& s,
         std::wstring::const_iterator const eos,
         std::wstring& key)
     {
+        static const int tbl[10][5] = {
+        //  0   {   }  \s  \w
+           {0,  0,  0,  0,  0},
+           {0,  5,  0,  2,  3}, // S1: '{' S5 | \s S2 | \w S3
+           {0,  0,  0,  2,  3}, // S2:  \s S2 | \w S3
+           {0,  0,  9,  4,  3}, // S3: '}' S9 | \s S4 | \w S3
+           {0,  0,  9,  4,  0}, // S4: '}' S9 | \s S4
+           {0,  0,  0,  5,  6}, // S5:  \s S5 | \w S6
+           {0,  0,  8,  7,  6}, // S6: '}' S8 | \s S7 | \w S6
+           {0,  0,  8,  7,  0}, // S7: '}' S8 | \w S7
+           {0,  0,  9,  0,  0}, // S8: '}' S9
+           {0,  0, 10,  0,  0}, // S9: '}' ACCEPT
+        };
         key.clear ();
         s += 2; // skip L"{{"
-        int state = 2;
-        int kind = PLAIN;
-        int level = 0;
+        int state = 1;
+        int kind = GETHTML;
         std::wstring::const_iterator beginkey = s;
         std::wstring::const_iterator endkey = s;
         for (; s < eos; ++s) {
-            if (2 == state) {
-                kind = GETHTML;
+            int chcls = '{' == *s ? 1 : '}' == *s ? 2
+                      : ' ' == *s ? 3 : '\t' == *s ? 3 : '\n' == *s ? 3
+                      : keychar (*s) ? 4 : 0;
+            int next_state = tbl[state][chcls];
+            if (1 == state) {
                 switch (*s) {
-                case '{': kind = GETASIS; state = 7; break;
-                case '&': kind = GETASIS; state = 3; break;
-                case '#': kind = SECTION; state = 3; break;
-                case '^': kind = UNLESS;  state = 3; break;
-                case '/': kind = ENDSECT; state = 3; break;
-                case '!': kind = COMMENT; level = 2; state = 12; break;
-                case ' ': case '\t': case '\n': state = 3; break;
-                default:
-                    if (keychar (*s)) {
-                        beginkey = s;
-                        state = 4;
-                    }
-                    else
-                        return PLAIN;
+                case '!': return skip_comment (s, eos);
+                case '{': kind = GETASIS; break;
+                case '&': kind = GETASIS; next_state = 2; break;
+                case '#': kind = SECTION; next_state = 2; break;
+                case '^': kind = UNLESS;  next_state = 2; break;
+                case '/': kind = ENDSECT; next_state = 2; break;
                 }
             }
-            else if (3 == state || 7 == state) {
-                if (keychar (*s)) {
-                    beginkey = s;
-                    ++state;
-                }
-                else if (! (' ' == *s || '\t' == *s || '\n' == *s))
-                    return PLAIN;
+            if (0 == next_state)
+                return PLAIN;
+            if (10 == next_state) {
+                key.assign (beginkey, endkey);
+                ++s;
+                return kind;
             }
-            else if (4 == state || 8 == state) {
+            if (3 != state && next_state == 3)
+                beginkey = s;
+            else if (6 != state && next_state == 6)
+                beginkey = s;
+            if (3 == state || 6 == state)
                 endkey = s;
-                if (' ' == *s || '\t' == *s || '\n' == *s)
-                    ++state;
-                else if ('}' == *s)
-                    state += 2;
-                else if (! keychar (*s))
-                    return PLAIN;
-            }
-            else if (5 == state || 9 == state) {
-                if ('}' == *s)
-                    ++state;
-                else if (! (' ' == *s || '\t' == *s || '\n' == *s))
-                    return PLAIN;
-            }
-            else if (6 == state) {
-                if ('}' == *s) {
-                    key.assign (beginkey, endkey);
-                    ++s;
-                    if (s < eos && kind >= SECTION && kind <= ENDSECT && '\n' == *s)
-                        ++s;
-                    return kind;
-                }
-                else
-                    return PLAIN;
-            }
-            else if (10 == state) {
-                if ('}' == *s)
-                    state = 6;
-                else
-                    return PLAIN;
-            }
-            else if (12 == state) {
-                if ('}' == *s)
-                    --level;
-                else if ('{' == *s)
-                    ++level;
-                if (level == 1)
-                    state = 6;
-            }
+            state = next_state;
         }
         return PLAIN;
     }
