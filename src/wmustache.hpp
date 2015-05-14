@@ -190,7 +190,9 @@ private:
             if (kind < PLAIN)
                 break;
             if (kind == PLAIN) {
-                s = save2 + 2;
+                s = save2;
+                while (s < eos && '{' == *s)
+                    ++s;
                 plain.append (save2, s);
             }
         }
