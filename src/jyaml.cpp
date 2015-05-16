@@ -97,16 +97,21 @@ std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::
 static bool l_document (derivs_t& s0, json& value)
 {
     derivs_t s = s0;
-    if (! s.check_bos () && ! c_forbidden (s))
+    bool first_document = s.check_bos ();
+    if (! first_document && ! c_forbidden (s))
         return s0.fail ();
-    s_l_comment (s);
+    if (first_document)
+        s_l_comment (s);
+    int docend = false;
     while (s.scan (L"^%.%.%.%b")) {
+        docend = true;
         if (! s_l_comment (s))
             return s0.fail ();
     }
     int ndirective = 0;
-    while (c_directive (s))
-        ++ndirective;
+    if (first_document || docend)
+        while (c_directive (s))
+            ++ndirective;
     bool dirend = false;
     if (s.scan (L"---%b"))
         dirend = true;
