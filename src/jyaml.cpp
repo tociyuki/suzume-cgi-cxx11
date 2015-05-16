@@ -129,7 +129,7 @@ static bool l_document (derivs_t& s0, json& value)
 
 static bool c_forbidden (derivs_t s)
 {
-    return s.check (L"^---%b") || s.check (L"^%.%.%.%b");
+    return s.lookahead (L"^---%b") || s.lookahead (L"^%.%.%.%b");
 }
 
 static bool c_directive (derivs_t& s0)
