@@ -7,7 +7,7 @@
 
 namespace wjson {
 
-std::wstring::size_type load_yaml (std::wstring const& input, json& value);
+std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::size_t pos = 0);
 
 }//namespace wjson
 
