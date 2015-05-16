@@ -1,7 +1,6 @@
 #include <string>
 #include <utility>
 #include "jyaml.hpp"
-#include <iostream>
 
 namespace wjson {
 
@@ -38,6 +37,7 @@ private:
 };
 
 static int c7toi (int const c);
+static bool l_endstream (derivs_t s);
 static bool l_document (derivs_t& s, json& value);
 static bool c_forbidden (derivs_t s);
 static bool c_directive (derivs_t& s0);
@@ -90,8 +90,21 @@ std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::
 {
     wjson::derivs_t s (input.cbegin (), input.cend ());
     s.advance (pos);
+    if (l_endstream (s)) {
+        value = json ();
+        return input.size ();
+    }
     bool ok = l_document (s, value);
     return ok ? s.cend () - input.cbegin () : std::wstring::npos;
+}
+
+static bool l_endstream (derivs_t s)
+{
+    while (s.scan (L"^%.%.%.%b")) {
+        if (! s_l_comment (s))
+            break;
+    }
+    return s.check_eos ();
 }
 
 static bool l_document (derivs_t& s0, json& value)
@@ -120,11 +133,13 @@ static bool l_document (derivs_t& s0, json& value)
     if (! s_l_block_node (s, -1, CTX_BLOCK_IN, value)) {
         if (! s_l_comment (s))
             return s0.fail ();
+        if (! first_document && ! docend)
+            return s0.fail ();
         value = json ();
     }
     if (! s.check_eos () && ! c_forbidden (s))
         return s0.fail ();
-    return s.match ();
+    return s0.match (s);
 }
 
 static bool c_forbidden (derivs_t s)
