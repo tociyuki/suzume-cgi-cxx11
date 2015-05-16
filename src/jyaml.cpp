@@ -136,7 +136,7 @@ static bool l_document (derivs_t& s0, json& value)
     if (! s_l_block_node (s, -1, CTX_BLOCK_IN, value)) {
         if (! s_l_comment (s))
             return s0.fail ();
-        if (! first_document && ! docend)
+        if (! first_document && ! dirend)
             return s0.fail ();
         value = json ();
     }
