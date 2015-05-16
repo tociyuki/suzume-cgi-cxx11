@@ -84,10 +84,11 @@ static int c7toi (int c)
     return 0 <= c && c <= 126 ? tbl[c] : 36;
 }
 
-bool load_yaml (std::wstring const& input, json& value)
+std::wstring::size_type load_yaml (std::wstring const& input, json& value)
 {
     wjson::derivs_t s (input.cbegin (), input.cend ());
-    return l_document (s, value);
+    bool ok = l_document (s, value);
+    return ok ? s.cend () - input.cbegin () : std::wstring::npos;
 }
 
 static bool l_document (derivs_t& s0, json& value)
