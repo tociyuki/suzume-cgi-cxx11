@@ -113,7 +113,7 @@ static bool l_document (derivs_t& s0, json& value)
         while (c_directive (s))
             ++ndirective;
     bool dirend = false;
-    if (s.scan (L"---%b"))
+    if (s.scan (L"^---%b"))
         dirend = true;
     if (ndirective > 0 && ! dirend)
         return s0.fail ();
