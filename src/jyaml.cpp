@@ -37,7 +37,7 @@ private:
 };
 
 static int c7toi (int const c);
-static bool l_endstream (derivs_t s);
+static int l_endstream (derivs_t s);
 static bool l_document (derivs_t& s, json& value);
 static bool c_forbidden (derivs_t s);
 static bool c_directive (derivs_t& s0);
@@ -90,7 +90,10 @@ std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::
 {
     wjson::derivs_t s (input.cbegin (), input.cend ());
     s.advance (pos);
-    if (l_endstream (s)) {
+    int endok = l_endstream (s);
+    if (endok < 0)
+        return std::wstring::npos;
+    if (endok == 0) {
         value = json ();
         return input.size ();
     }
@@ -98,13 +101,13 @@ std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::
     return ok ? s.cend () - input.cbegin () : std::wstring::npos;
 }
 
-static bool l_endstream (derivs_t s)
+static int l_endstream (derivs_t s)
 {
     while (s.scan (L"^%.%.%.%b")) {
         if (! s_l_comment (s))
-            break;
+            return -1;
     }
-    return s.check_eos ();
+    return s.check_eos () ? 0 : 1;
 }
 
 static bool l_document (derivs_t& s0, json& value)
