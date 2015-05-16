@@ -19,10 +19,12 @@ public:
     bool lookahead (std::wstring const& pattern);
     bool check (std::wstring const& pattern);
     bool check_indent (int const n1, int const n2);
+    bool check_bos ();
     bool check_bol ();
     bool check_eos ();
     int peek () const { return pbegin < peos ? *pbegin : -1; }
     int get ();
+    void advance (std::size_t pos);
     bool match () { pbegin = pend; return true; }
     bool match (derivs_t const& x) { pbegin = pend = x.pend; return true; }
     bool fail () { pend = pbegin; return false; }
@@ -86,7 +88,8 @@ static int c7toi (int c)
 
 std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::size_t pos)
 {
-    wjson::derivs_t s (input.cbegin () + pos, input.cend ());
+    wjson::derivs_t s (input.cbegin (), input.cend ());
+    s.advance (pos);
     bool ok = l_document (s, value);
     return ok ? s.cend () - input.cbegin () : std::wstring::npos;
 }
@@ -94,6 +97,8 @@ std::wstring::size_type load_yaml (std::wstring const& input, json& value, std::
 static bool l_document (derivs_t& s0, json& value)
 {
     derivs_t s = s0;
+    if (! s.check_bos () && ! c_forbidden (s))
+        return s0.fail ();
     s_l_comment (s);
     while (s.scan (L"^%.%.%.%b")) {
         if (! s_l_comment (s))
@@ -652,6 +657,20 @@ int derivs_t::get ()
         return -1;
     pend = ++pbegin;
     return pbegin[-1];
+}
+
+void derivs_t::advance (std::size_t pos)
+{
+    pbegin = pbos + pos;
+    if (pbegin >= peos)
+        pbegin = peos;
+    pend = pbegin;
+}
+
+bool derivs_t::check_bos ()
+{
+    pend = pbegin;
+    return pbegin == pbos;
 }
 
 bool derivs_t::check_bol ()
