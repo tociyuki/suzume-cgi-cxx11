@@ -776,7 +776,7 @@ bool derivs_t::check (std::wstring const& pattern)
             }
             lower = 'F' == exact ? 38 : 's' == exact ? 39 : 0;
             upper = 'd' == exact ? 10 : 'x' == exact ? 16 : 'P' == exact ? 37
-                  : 'F' == exact ? 39 : 's' == exact ? 40 : 'S' == exact ? -1 : 0;
+                  : 'F' == exact ? 39 : 's' == exact ? 40 : 'S' == exact ? 39 : 0;
         }
         int n1 = 1; int n2 = 1;
         if (ip + 4 < pattern.end () && L'{' == *ip && L',' == ip[2] && L'}' == ip[4]) {
@@ -789,8 +789,6 @@ bool derivs_t::check (std::wstring const& pattern)
             int c = p < peos ? *p : -1;
             int x = c7toi (c);
             if (dot && ('\t' == c || ' ' <= c))
-                ++p;
-            else if (upper == -1 && 'S' == exact && ' ' < c)
                 ++p;
             else if (! dot && ((upper == 0 && exact == c) || (lower <= x && x < upper)))
                 ++p;
