@@ -23,13 +23,13 @@
 
 class wmustache {
 public:
-    enum {ENDMARK, GETHTML, GETASIS, SECTION, UNLESS, ENDSECT, PLAIN, COMMENT}; 
+    enum {PLAIN, GETASIS, GETHTML, ENDSECT, UNLESS, SECTION, COMMENT, ENDMARK};
 
     struct instruction {
         int op;
         std::wstring str;
-        int addr;
-        instruction (int a, std::wstring const& b, int c)
+        std::size_t addr;
+        instruction (int a, std::wstring const& b, std::size_t c)
             : op (a), str (b), addr (c) {}
     };
 
@@ -58,11 +58,9 @@ private:
         std::wstring::const_iterator const eos) const;
 
     void render_section (
-        int const ip_begin, int const ip_end,
-        std::vector<wjson::json *>& env,
-        std::wostream& out) const;
+        std::vector<wjson::json *>& env, std::wostream& out,
+        std::size_t ip, std::size_t const ip_end) const;
     bool lookup (std::vector<wjson::json *>& env,
         std::wstring const& key,
         wjson::json& it) const;
 };
-

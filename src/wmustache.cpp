@@ -1,3 +1,4 @@
+#include <iostream>
 #include <string>
 #include <vector>
 #include "wmustache.hpp"
@@ -5,10 +6,11 @@
 wmustache::wmustache () : mstmt () {}
 wmustache::~wmustache () {}
 
-bool wmustache::assemble (std::wstring const& str)
+bool
+wmustache::assemble (std::wstring const& str)
 {
-    int addrsect, addrend;
-    std::vector<int> backpatch;
+    std::size_t addrsect;
+    std::vector<std::size_t> backpatch;
     std::wstring::const_iterator s = str.cbegin ();
     std::wstring::const_iterator const eos = str.cend ();
     int kind;
@@ -31,12 +33,11 @@ bool wmustache::assemble (std::wstring const& str)
             if (backpatch.empty ())
                 return false;
             addrsect = backpatch.back ();
-            addrend = mstmt.size ();
             backpatch.pop_back ();
             if (mstmt[addrsect].str != key)
                 return false;
-            mstmt[addrsect].addr = addrend;
             mstmt.push_back (instruction{kind, key, addrsect});
+            mstmt[addrsect].addr = mstmt.size ();
             break;
         default:
             break;
@@ -46,11 +47,11 @@ bool wmustache::assemble (std::wstring const& str)
         return false;
     if (! plain.empty ())
         mstmt.push_back (instruction{PLAIN, plain, 0});
-    mstmt.push_back (instruction{ENDMARK, L"", 0});
     return true;
 }
 
-int wmustache::next_token (std::wstring::const_iterator& s,
+int
+wmustache::next_token (std::wstring::const_iterator& s,
     std::wstring::const_iterator const eos,
     std::wstring& plain, std::wstring& key) const
 {
@@ -70,21 +71,20 @@ int wmustache::next_token (std::wstring::const_iterator& s,
         std::wstring::const_iterator save2 = s;
         if (save1 < save2)
             plain.append (save1, save2);
-        kind = ENDMARK;
         if (s == eos)
             break;
         kind = scan_markup (s, eos, key);
-        if (kind < PLAIN)
+        if (kind != PLAIN)
             break;
-        if (kind == PLAIN) {
-            s = save2 + 2;
-            plain.append (save2, s);
-        }
+        kind = ENDMARK;
+        s = save2 + 2;
+        plain.append (save2, s);
     }
     return kind;
 }
 
-int wmustache::scan_markup (std::wstring::const_iterator& s,
+int
+wmustache::scan_markup (std::wstring::const_iterator& s,
     std::wstring::const_iterator const eos,
     std::wstring& key) const
 {
@@ -99,11 +99,11 @@ int wmustache::scan_markup (std::wstring::const_iterator& s,
        {0,  0,  8,  7,  6}, // S6: '}' S8 | \s S7 | \w S6
        {0,  0,  8,  7,  0}, // S7: '}' S8 | \s S7
        {0,  0,  9,  0,  0}, // S8: '}' S9
-       {0,  0, 10,  0,  0}, // S9: '}' ACCEPT
+       {0,  0, 10,  0,  0}, // S9: '}' MATCH
     };
     key.clear ();
     s += 2; // skip L"{{"
-    int state = 1;
+    int next_state = 1;
     int kind = GETHTML;
     std::wstring::const_iterator beginkey = s;
     std::wstring::const_iterator endkey = s;
@@ -111,8 +111,9 @@ int wmustache::scan_markup (std::wstring::const_iterator& s,
         int chcls = '{' == *s ? 1 : '}' == *s ? 2
                   : ' ' == *s ? 3 : '\t' == *s ? 3 : '\n' == *s ? 3
                   : keychar (*s) ? 4 : 0;
-        int next_state = tbl[state][chcls];
-        if (1 == state) {
+        int prev_state = next_state;
+        next_state = tbl[prev_state][chcls];
+        if (1 == prev_state) {
             switch (*s) {
             case '!': return skip_comment (s, eos);
             case '{': kind = GETASIS; break;
@@ -123,28 +124,26 @@ int wmustache::scan_markup (std::wstring::const_iterator& s,
             }
         }
         if (0 == next_state)
-            return PLAIN;
+            break;
         if (10 == next_state) {
             key.assign (beginkey, endkey);
             ++s;
-            if (SECTION == kind || UNLESS == kind || ENDSECT == kind) {
-                if ('\n' == *s)
+            if (ENDSECT <= kind && '\n' == *s)
                     ++s;
-            }
             return kind;
         }
-        if (3 != state && next_state == 3)
+        if (3 != prev_state && 3 == next_state)
             beginkey = s;
-        else if (6 != state && next_state == 6)
+        else if (6 != prev_state && 6 == next_state)
             beginkey = s;
-        if (3 == state || 6 == state)
+        if (3 == prev_state || 6 == prev_state)
             endkey = s;
-        state = next_state;
     }
     return PLAIN;
 }
 
-bool wmustache::keychar (int ch) const
+bool
+wmustache::keychar (int ch) const
 {
     return ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
          || ('0' <= ch && ch <= '9') || '_' == ch || '?' == ch || '!' == ch
@@ -167,6 +166,8 @@ int wmustache::skip_comment (std::wstring::const_iterator& s,
     if (s >= eos || '}' != *s)
         return PLAIN;
     ++s;
+    if ('\n' == *s)
+        ++s;
     return COMMENT;
 }
 
@@ -174,73 +175,96 @@ void wmustache::render (wjson::json& param, std::wostream& out) const
 {
     std::vector<wjson::json *> env;
     env.push_back (&param);
-    render_section (0, mstmt.size (), env, out);
+    render_section (env, out, 0, mstmt.size ());
     env.back () = nullptr;
 }
 
 void wmustache::render_section (
-    int const ip_begin, int const ip_end,
-    std::vector<wjson::json *>& env,
-    std::wostream& out) const
+    std::vector<wjson::json *>& env, std::wostream& out,
+    std::size_t ip, std::size_t const ip_end) const
 {
-    for (int ip = ip_begin; ip < ip_end; ++ip) {
+    while (ip < ip_end) {
         int op = mstmt[ip].op;
         if (PLAIN == op) {
             out << mstmt[ip].str;
+            ++ip;
             continue;
         }
         wjson::json it;
-        if (GETHTML <= op && op <= UNLESS)
-            lookup (env, mstmt[ip].str, it);
-        if (GETHTML == op || GETASIS == op) {
-            if (it.is<bool> () || it.is<int> () || it.is<double> ())
+        bool const exists = lookup (env, mstmt[ip].str, it);
+        std::size_t const ip_next = op < SECTION ? ip : mstmt[ip].addr - 1;
+        std::size_t const ip_section = ip + 1;
+        if (! exists || it.is<std::nullptr_t> ()) {
+            if (UNLESS == op)
+                render_section (env, out, ip_section, ip_next);
+        }
+        else if (it.is<bool> ()) {
+            if (GETHTML == op || GETASIS == op)
                 out << it.dump ();
-            else if (it.is<std::wstring> ()) {
-                if (GETASIS == op)
-                    out << it.as<std::wstring> ();
-                else {
-                    std::wstring t (it.as<std::wstring> ());
-                    for (auto s = t.begin (); s != t.end (); ++s)
-                        switch (*s) {
-                        case L'&': out << L"&amp;"; break;
-                        case L'<': out << L"&lt;"; break;
-                        case L'>': out << L"&gt;"; break;
-                        case L'"': out << L"&quot;"; break;
-                        case L'\'': out << L"&#39;"; break;
-                        default: out << *s; break;
-                        }
-                }
+            else if (UNLESS == op && ! it.as<bool> ())
+                render_section (env, out, ip_section, ip_next);
+            else if (SECTION == op && it.as<bool> ())
+                render_section (env, out, ip_section, ip_next);
+        }
+        else if (it.is<int> ()) {
+            if (GETHTML == op || GETASIS == op)
+                out << it.dump ();
+            else if (UNLESS == op && ! it.as<int> ())
+                render_section (env, out, ip_section, ip_next);
+            else if (SECTION == op && it.as<int> ())
+                render_section (env, out, ip_section, ip_next);            
+        }
+        else if (it.is<double> ()) {
+            if (GETHTML == op || GETASIS == op)
+                out << it.dump ();
+            else if (SECTION == op)
+                render_section (env, out, ip_section, ip_next);            
+        }
+        else if (it.is<std::wstring> ()) {
+            bool const is_empty = it.as<std::wstring> ().empty ();
+            if (GETASIS == op)
+                out << it.is<std::wstring> ();
+            else if (GETHTML == op) {
+                std::wstring str (it.as<std::wstring> ());
+                for (wchar_t c : str)
+                    switch (c) {
+                    case L'&': out << L"&amp;"; break;
+                    case L'<': out << L"&lt;"; break;
+                    case L'>': out << L"&gt;"; break;
+                    case L'"': out << L"&quot;"; break;
+                    case L'\'': out << L"&#39;"; break;
+                    default: out << c; break;
+                    }
+            }
+            else if (UNLESS == op && is_empty)
+                render_section (env, out, ip_section, ip_next);
+            else if (SECTION == op && ! is_empty)
+                render_section (env, out, ip_section, ip_next);
+        }
+        else if (it.is<wjson::object> ()) {
+            bool const is_empty = it.as<wjson::object> ().empty ();
+            if (UNLESS == op && is_empty)
+                render_section (env, out, ip_section, ip_next);
+            else if (SECTION == op && ! is_empty) {
+                env.push_back (&it);
+                render_section (env, out, ip_section, ip_next);
+                env.back () = nullptr;
+                env.pop_back ();
             }
         }
-        else if (SECTION == op || UNLESS == op) {
-            bool it_true = false;
-            if (it.is<bool> ())
-                it_true = it.as<bool> ();
-            else if (it.is<wjson::array> ())
-                it_true = ! it.as<wjson::array> ().empty ();
-            else if (! it.is<std::nullptr_t> ())
-                it_true = true;
-            if (! it_true && UNLESS == op)
-                render_section (ip + 1, mstmt[ip].addr, env, out);
-            else if (it_true && SECTION == op) {
-                if (it.is<wjson::array> ())
-                    for (auto& x : it.as<wjson::array> ()) {
-                        env.push_back (&x);
-                        render_section (ip + 1, mstmt[ip].addr, env, out);
-                        env.back () = nullptr;
-                        env.pop_back ();
-                    }
-                else if (it.is<wjson::object> ()) {
-                    env.push_back (&it);
-                    render_section (ip + 1, mstmt[ip].addr, env, out);
+        else if (it.is<wjson::array> ()) {
+            if (UNLESS == op && it.as<wjson::array> ().empty ())
+                render_section (env, out, ip_section, ip_next);
+            else if (SECTION == op) {
+                for (auto& x : it.as<wjson::array> ()) {
+                    env.push_back (&x);
+                    render_section (env, out, ip_section, ip_next);
                     env.back () = nullptr;
                     env.pop_back ();
                 }
-                else
-                    render_section (ip + 1, mstmt[ip].addr, env, out);
             }
-            ip = mstmt[ip].addr;
         }
+        ip = ip_next + 1;
     }
 }
 
