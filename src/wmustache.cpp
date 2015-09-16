@@ -108,11 +108,11 @@ wmustache::scan_markup (std::wstring::const_iterator& s,
     std::wstring::const_iterator beginkey = s;
     std::wstring::const_iterator endkey = s;
     for (; s < eos; ++s) {
-        int chcls = '{' == *s ? 1 : '}' == *s ? 2
+        int cls = '{' == *s ? 1 : '}' == *s ? 2
                   : ' ' == *s ? 3 : '\t' == *s ? 3 : '\n' == *s ? 3
                   : keychar (*s) ? 4 : 0;
         int prev_state = next_state;
-        next_state = tbl[prev_state][chcls];
+        next_state = tbl[prev_state][cls];
         if (1 == prev_state) {
             switch (*s) {
             case '!': return skip_comment (s, eos);
@@ -132,11 +132,9 @@ wmustache::scan_markup (std::wstring::const_iterator& s,
                     ++s;
             return kind;
         }
-        if (3 != prev_state && 3 == next_state)
+        if (4 == cls && ! (3 == prev_state || 6 == prev_state))
             beginkey = s;
-        else if (6 != prev_state && 6 == next_state)
-            beginkey = s;
-        if (3 == prev_state || 6 == prev_state)
+        if (4 != cls && (3 == prev_state || 6 == prev_state))
             endkey = s;
     }
     return PLAIN;
@@ -223,7 +221,7 @@ void wmustache::render_section (
         else if (it.is<std::wstring> ()) {
             bool const is_empty = it.as<std::wstring> ().empty ();
             if (GETASIS == op)
-                out << it.is<std::wstring> ();
+                out << it.as<std::wstring> ();
             else if (GETHTML == op) {
                 std::wstring str (it.as<std::wstring> ());
                 for (wchar_t c : str)
