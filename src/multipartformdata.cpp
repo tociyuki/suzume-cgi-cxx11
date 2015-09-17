@@ -187,7 +187,7 @@ decode_multipart_formdata (std::istream& input,
     std::string body;
     std::size_t count = 0;
     int next_state = 9;
-    for (char ch; next_state < 10 && count < content_length && input.get (ch); ) {
+    for (char ch; next_state < 11 && count < content_length && input.get (ch); ) {
         ++count;
         if (8 > next_state) {
             uint32_t const octet = static_cast<uint8_t> (ch);
@@ -222,7 +222,7 @@ decode_multipart_formdata (std::istream& input,
                 }
                 else if (matchtail (body, close_delimiter)) {
                     body.erase (body.size () - close_delimiter.size ());
-                    next_state = 10;
+                    next_state = 11;
                 }
                 if (8 != next_state) {
                     if (name.empty ())
@@ -240,13 +240,26 @@ decode_multipart_formdata (std::istream& input,
         }
         else if (9 == next_state) {
             body.push_back (ch);
-            if (LF == ch && matchtail (body, dash_boundary)) {
+            if (LF == ch && body == dash_boundary) {
+                next_state = 1;
+                body.clear ();
+            }
+            else if (LF == ch) {
+                next_state = 10;
+            }
+        }
+        else if (10 == next_state) {
+            body.push_back (ch);
+            if (LF == ch && matchtail (body, delimiter)) {
                 next_state = 1;
                 body.clear ();
             }
         }
     }
-    return 10 == next_state && count == content_length;
+    for (char ch; count < content_length && input.get (ch); ) {
+        ++count;
+    }
+    return 11 == next_state && count == content_length;
 }
 
 }//namespace http
