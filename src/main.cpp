@@ -61,7 +61,7 @@ struct suzume_appl : public http::appl {
             std::string boundary;
             if (! http::is_multipart_formdata (req.content_type, boundary))
                 return false;
-            http::decode_multipart (req.input, content_length, boundary, param);
+            http::decode_multipart_formdata (req.input, content_length, boundary, param);
             return post_body (param, req, res);
         }
         return false;

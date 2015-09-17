@@ -1,19 +1,18 @@
 #include <string>
 #include <vector>
 #include <istream>
-#include <utility>
+#include <algorithm>
 #include "encodeu8.hpp"
 
 namespace http {
-static inline bool istchar (int const c)
+
+static inline std::size_t
+assoc_media_param (std::vector<std::string> const& param, std::string const& name)
 {
-    // [!#$%&'*+\-.^_`|~0-9A-Za-z]
-    static const unsigned long bitmap[8] = {
-        0, 0x5f36ffc0UL, 0x7fffffe3UL, 0xffffffeaUL, 0, 0, 0, 0};
-    if (c < 0 || c > 255)
-        return false;
-    int const sft = 31 - (c & 31);
-    return ((bitmap[c >> 5] >> sft) & 1) != 0;
+    for (std::size_t i = 0; i + 1 < param.size (); i += 2)
+        if (param[i] == name)
+            return i + 1;
+    return 0;
 }
 
 static inline int lowercase (int const c)
@@ -21,193 +20,232 @@ static inline int lowercase (int const c)
     return 'A' <= c && c <= 'Z' ? c + ('a' - 'A') : c;
 }
 
-static bool scan_header_word (
-    std::string::const_iterator& s0, std::string::const_iterator const eos,
-    std::string const& str)
+static inline int
+lookup_cls (uint32_t const tbl[], uint32_t const octet)
 {
-    std::string::const_iterator s = s0;
-    for (char c : str) {
-        if (s >= eos || lowercase(*s) != c)
-            return false;
-        ++s;
-    }
-    while (s < eos && *s <= ' ')
-        ++s;
-    s0 = s;
-    return true;
+    uint32_t const clsbpos = (7 - (octet & 7)) << 2;
+    return octet < 128 ? ((tbl[octet >> 3] >> clsbpos) & 0x0f) : 0;
 }
 
-static bool scan_header_parameters (
-    std::string::const_iterator s,
-    std::string::const_iterator const eos,
-    std::vector<std::string>& param)
-{
-    for (;;) {
-        std::string name;
-        std::string value;
-        while (s < eos && *s <= ' ')
-            ++s;
-        if (! (s < eos && ';' == *s))
-            break;
-        ++s;
-        while (s < eos && *s <= ' ')
-            ++s;
-        while (s < eos && istchar (static_cast<unsigned char> (*s)))
-            name.push_back (lowercase (*s++));
-        if (name.empty () || ! (s < eos && '=' == *s))
-            return false;
-        ++s;
-        if (s < eos && '"' == *s) {
-            ++s;
-            for (;;) {
-                if (! (s < eos && ('\t' == *s || ' ' <= *s)))
-                    return false;
-                int ch = *s++;
-                if ('"' == ch)
-                    break;
-                if ('\\' == ch) {
-                    if (! (s < eos && ' ' <= *s))
-                        return false;
-                    ch = *s++;
-                }
-                value.push_back (ch);
-            }
-        }
-        else if (s < eos && istchar (static_cast<unsigned char> (*s))) {
-            while (s < eos && istchar (static_cast<unsigned char> (*s)))
-                value.push_back (*s++);
-        }
-        else
-            return false;
-        param.push_back (name);
-        param.push_back (value);
-    }
-    return s == eos;
-}
-
-static inline bool matchtail (std::string const &s, std::string const &t)
+static inline bool
+matchtail (std::string const &s, std::string const &t)
 {
     return s.size () >= t.size ()
             && s.compare (s.size () - t.size (), t.size (), t) == 0;
 }
 
-bool is_multipart_formdata (
-    std::string const& content_type,
-    std::string& boundary)
+// media_type
+//
+//  tchar+ ('/' tchar+)? \s*
+//  (';' \s* tchar+ \s*
+//       '=' \s* (tchar+ | '"' (qchar | '\\' (qchar | ["\\]))* '"') \s*)*
+//  \s*
+//
+//  tchar: [!#$%&'*+\-.^_`|~0-9A-Za-z]
+//  qchar: [\x21\x23-\x5b\x5d-\x7e]  // exclude ["\\]
+bool
+decode_media_type (std::string const& fieldvalue,
+    std::string& media_type, std::vector<std::string>& media_param)
 {
-    std::vector<std::string> h;
-    std::string::const_iterator s = content_type.cbegin ();
-    std::string::const_iterator const eos = content_type.cend ();
-    if (! scan_header_word (s, eos, "multipart/form-data"))
-        return false;
-    if (! scan_header_parameters (s, eos, h))
-        return false;
-    for (std::size_t i = 0; i < h.size (); i += 2)
-        if (h[i] == "boundary") {
-            boundary = h[i + 1];
-            return true;
+    static const uint8_t SHIFT[15][10] = {
+    //      t     /     v     \s    =     "     \\    ;     $
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+        {0, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S1
+        {0, 0x12, 0x13, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S2
+        {0, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S3
+        {0, 0x14, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S4
+        {0, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S5
+        {0, 0x27, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00}, // S6
+        {0, 0x27, 0x00, 0x00, 0x08, 0x59, 0x00, 0x00, 0x00, 0x00}, // S7
+        {0, 0x00, 0x00, 0x00, 0x08, 0x09, 0x00, 0x00, 0x00, 0x00}, // S8
+        {0, 0x3a, 0x00, 0x00, 0x09, 0x00, 0x0c, 0x00, 0x00, 0x00}, // S9
+        {0, 0x3a, 0x00, 0x00, 0x45, 0x00, 0x00, 0x00, 0x46, 0x4e}, // Sa
+        {0, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x00}, // Sb
+        {0, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x0d, 0x0b, 0x3c, 0x00}, // Sc
+        {0, 0x00, 0x00, 0x00, 0x45, 0x00, 0x00, 0x00, 0x46, 0x4e}, // Sd
+        {1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Se
+    };
+    static uint32_t CCLASS[16] = {
+    //                  tn  r
+        0x00000000L, 0x04000000L, 0x00000000L, 0x00000000L,
+    //     !"#$%&'     ()*+,-./     01234567     89:;<=>?
+        0x41611111L, 0x33113112L, 0x11111111L, 0x11383533L,
+    //    @ABCDEFG     HIJKLMNO     PQRSTUVW     XYZ[\]^_
+        0x31111111L, 0x11111111L, 0x11111111L, 0x11137311L,
+    //    `abcdefg     hijklmno     pqrstuvw     xyz{|}~
+        0x11111111L, 0x11111111L, 0x11111111L, 0x11131310L,
+    };
+    bool isfilename;
+    std::string attribute;
+    std::string value;
+    std::string::const_iterator s = fieldvalue.cbegin ();
+    std::string::const_iterator const e = fieldvalue.cend ();
+    int next_state = 1;
+    for (; s <= e; ++s) {
+        uint32_t const octet = s == e ? '\0' : static_cast<uint8_t> (*s);
+        int const cls = s == e ? 9 : octet >= 128 ? 3
+            : (0x0c == next_state && isfilename && '\\' == octet) ? 3
+            : lookup_cls (CCLASS, octet);
+        int const prev_state = next_state;
+        next_state = 0 == cls ? 0 : (SHIFT[prev_state][cls] & 0x0f);
+        if (! next_state)
+            break;
+        switch (SHIFT[prev_state][cls] & 0xf0) {
+        case 0x10:
+            media_type.push_back (lowercase (octet));
+            break;
+        case 0x20:
+            attribute.push_back (lowercase (octet));
+            break;
+        case 0x30:
+            value.push_back (octet);
+            break;
+        case 0x40:
+            media_param.push_back (attribute);
+            media_param.push_back (value);
+            attribute.clear ();
+            value.clear ();
+            break;
+        case 0x50:
+            isfilename = attribute == "filename";
+            break;
         }
-    return false;
+    }
+    return (SHIFT[next_state][0] & 1) != 0;
 }
 
-bool decode_multipart (
-    std::istream& input, std::size_t const content_length,
-    std::string const& boundary,
-    std::vector<std::wstring>& param)
+bool
+is_multipart_formdata (std::string const& content_type, std::string& boundary)
 {
-    static const int pattern_header[5][5] = {
-        {0, 0, 0, 0, 0},
-        {0, 0, 0, 0, 2},    /* S1: graph S2                     */
-        {0, 3, 0, 2, 2},    /* S2: graph S2 | [ \t] S2 | CR S3  */
-        {0, 0, 4, 0, 0},    /* S3: LF S4                        */
-        {0,-1,-1, 2,-1}};   /* S4: [ \t] S2 |                   */
-    std::string pattern0 = "--" + boundary + "\x0d\x0a";
-    std::string pattern1 = "\x0d\x0a--" + boundary + "\x0d\x0a";
-    std::string pattern2 = "\x0d\x0a--" + boundary + "--\x0d\x0a";
-    int major_state = 0;
-    int state = 0;
-    std::size_t count = 0;
-    std::string header;
+    std::string media_type;
+    std::vector<std::string> media_param;
+    if (! decode_media_type (content_type, media_type, media_param))
+        return false;
+    if (media_type != "multipart/form-data")
+        return false;
+    std::size_t i = assoc_media_param (media_param, "boundary");
+    if (! i)
+        return false;
+    std::swap (boundary, media_param[i]);
+    return true;
+}
+
+static std::string
+decode_disposition_name (std::string const& disposition)
+{
+    std::string media_type;
+    std::vector<std::string> media_param;
+    std::string name;
+    if (decode_media_type (disposition, media_type, media_param)) {
+        if (assoc_media_param (media_param, "filename") > 0)
+            return "";
+        std::size_t i = assoc_media_param (media_param, "name");
+        if (media_type == "form-data" && i > 0)
+            return media_param[i];
+    }
+    return "";
+}
+
+bool
+decode_multipart_formdata (std::istream& input,
+    std::size_t const content_length,
+    std::string const& boundary,
+    std::vector<std::wstring>& formdata)
+{
+    static const int SHIFT[9][7] = {
+    //      t     v     \s    :     \r    \n
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+        {0, 0x12, 0x00, 0X00, 0x00, 0x00, 0x00}, // S1: tchar S2
+        {0, 0x12, 0x00, 0x00, 0x03, 0x00, 0x00}, // S2: tchar S2 | ':' S3
+        {0, 0x24, 0x24, 0x03, 0x00, 0x05, 0x00}, // S3: vchar S4 | \s S3 | \r S5
+        {0, 0x24, 0x24, 0x24, 0x24, 0x05, 0x00}, // S4: vchar S4 | \s S4 | \r S5
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06}, // S5: \n S6
+        {0, 0x32, 0x00, 0x04, 0x00, 0x37, 0x00}, // S6: tchar S2 | \s S4 | \r S7
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}, // S7: \n S8
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S8: BODY
+    };
+    static uint32_t CCLASS[16] = { // [!#$%&'*+\-.^_`|~0-9A-Za-z]
+    //                  tn  r
+        0x00000000L, 0x03600500L, 0x00000000L, 0x00000000L,
+    //     !"#$%&'     ()*+,-./     01234567     89:;<=>?
+        0x31211111L, 0x22112112L, 0x11111111L, 0x11422222L,
+    //    @ABCDEFG     HIJKLMNO     PQRSTUVW     XYZ[\]^_
+        0x21111111L, 0x11111111L, 0x11111111L, 0x11122211L,
+    //    `abcdefg     hijklmno     pqrstuvw     xyz{|}~
+        0x11111111L, 0x11111111L, 0x11111111L, 0x11121210L,
+    };
+    static const char LF = '\x0a';
+    static const std::string DASH = "--";
+    static const std::string CRLF = "\x0d\x0a";
+    std::string const dash_boundary = DASH + boundary + CRLF;
+    std::string const delimiter = CRLF + DASH + boundary + CRLF;
+    std::string const close_delimiter = CRLF + DASH + boundary + DASH + CRLF;
+    std::string fieldname;
+    std::string fieldvalue;
     std::string name;
     std::string body;
-    while (major_state < 3 && count < content_length) {
-        if (0 == major_state) {         // leader
-            int ch = input.get ();
-            ++count;
-            if (! (state < pattern0.size () && pattern0[state] == ch))
-                return false;
-            if (++state == pattern0.size ()) {
-                major_state = 1;
-                state = 1;
+    std::size_t count = 0;
+    int next_state = 9;
+    for (char ch; next_state < 10 && count < content_length && input.get (ch); ) {
+        ++count;
+        if (8 > next_state) {
+            uint32_t const octet = static_cast<uint8_t> (ch);
+            int const cls = octet >= 128 ? 3 : lookup_cls (CCLASS, octet);
+            int const prev_state = next_state;
+            next_state = SHIFT[prev_state][cls] & 0x0f;
+            if (! next_state)
+                break;
+            switch (SHIFT[prev_state][cls] & 0xf0) {
+            case 0x10:
+                fieldname.push_back (lowercase (octet));
+                break;
+            case 0x20:
+                fieldvalue.push_back (octet);
+                break;
+            case 0x30:
+                if (fieldname == "content-disposition" && name.empty ())
+                    name = decode_disposition_name (fieldvalue);
+                fieldname.clear ();
+                fieldvalue.clear ();
+                if (1 == cls)
+                    fieldname.push_back (lowercase (octet));
+                break;
             }
         }
-        else if (1 == major_state) {    // headers
-            int ch = input.peek ();
-            int ccls = (' ' < ch && '\x7f' != ch) ? 4
-                     : '\x09' == ch ? 3 : ' ' == ch ? 3
-                     : '\x0a' == ch ? 2 : '\x0d' == ch ? 1
-                     : 0;
-            state = pattern_header[state][ccls];
-            if (1 <= state && state <= 4) {
-                header.push_back (ch);
-                input.get ();
-                ++count;
-            }
-            else if (state < 0) {
-                std::string::const_iterator s = header.cbegin ();
-                std::string::const_iterator const eos = header.cend ();
-                if (scan_header_word (s, eos, "content-disposition:")) {
-                    std::vector<std::string> attr;
-                    if (! scan_header_word (s, eos, "form-data"))
-                        return false;
-                    if (! scan_header_parameters (s, eos, attr))
-                        return false;
-                    for (std::size_t i = 0; i < attr.size (); i += 2)
-                        if (attr[i] == "filename")  // diable file upload
-                            return false;
-                        else if (attr[i] == "name") {
-                            name = attr[i + 1];
-                            break;
-                        }
+        else if (8 == next_state) {
+            body.push_back (ch);
+            if (LF == ch) {
+                if (matchtail (body, delimiter)) {
+                    body.erase (body.size () - delimiter.size ());
+                    next_state = 1;
                 }
-                header.clear ();
-                state = 1;
-            }
-            else if (0 == state) {
-                if (name.empty ())
-                    return false;
-                major_state = 2;
+                else if (matchtail (body, close_delimiter)) {
+                    body.erase (body.size () - close_delimiter.size ());
+                    next_state = 10;
+                }
+                if (8 != next_state) {
+                    if (name.empty ())
+                        return false;
+                    std::wstring wname;
+                    std::wstring wbody;
+                    if (! decode_utf8 (name, wname) || ! decode_utf8(body, wbody))
+                        return false;
+                    formdata.push_back (wname);
+                    formdata.push_back (wbody);
+                    name.clear ();
+                    body.clear ();
+                }
             }
         }
-        else if (2 == major_state) {        // body
-            int ch = input.get ();
-            ++count;
-            if (0 == state && '\x0d' != ch)
-                return false;
-            if (1 == state && '\x0a' != ch)
-                return false;
-            if (++state > 2)
-                body.push_back (ch);
-            if (matchtail (body, pattern1)) {
-                body.erase (body.size () - pattern1.size ());
-                state = 1;
-                major_state = 1;
-            }
-            else if (matchtail (body, pattern2)) {
-                body.erase (body.size () - pattern2.size ());
-                major_state = 3;
-            }
-            if (2 != major_state) {
-                std::wstring wname;
-                std::wstring wbody;
-                if (! decode_utf8 (name, wname) || ! decode_utf8 (body, wbody))
-                    return false;
-                param.push_back (std::move (wname));
-                param.push_back (std::move (wbody));
+        else if (9 == next_state) {
+            body.push_back (ch);
+            if (LF == ch && matchtail (body, dash_boundary)) {
+                next_state = 1;
                 body.clear ();
             }
         }
     }
-    return 3 == major_state && count == content_length;
+    return 10 == next_state && count == content_length;
 }
+
 }//namespace http
