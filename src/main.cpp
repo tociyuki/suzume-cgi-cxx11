@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
+#include <csignal>
 #include "wjson.hpp"
 #include "suzume_data.hpp"
 #include "suzume_view.hpp"
@@ -70,8 +71,9 @@ struct suzume_appl : public http::appl {
 
 int main ()
 {
-    suzume_appl  app ("data/suzume.db", "view/suzume.html");
+    std::signal (SIGPIPE, SIG_IGN);
 
+    suzume_appl  app ("data/suzume.db", "view/suzume.html");
     runcgi (app);
 
     return EXIT_SUCCESS;
