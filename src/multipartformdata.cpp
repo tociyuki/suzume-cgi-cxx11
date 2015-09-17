@@ -225,12 +225,14 @@ decode_multipart_formdata (std::istream& input,
                     next_state = 11;
                 }
                 if (8 != next_state) {
-                    if (name.empty ())
-                        return false;
                     std::wstring wname;
                     std::wstring wbody;
-                    if (! decode_utf8 (name, wname) || ! decode_utf8(body, wbody))
-                        return false;
+                    if (name.empty ()
+                            || ! decode_utf8 (name, wname)
+                            || ! decode_utf8(body, wbody)) {
+                        next_state = 0;
+                        break;
+                    }
                     formdata.push_back (wname);
                     formdata.push_back (wbody);
                     name.clear ();
