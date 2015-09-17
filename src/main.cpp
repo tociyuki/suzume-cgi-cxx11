@@ -7,6 +7,7 @@
 #include "suzume_view.hpp"
 #include "http.hpp"
 #include "runcgi.hpp"
+#include "encodeu8.hpp"
 
 enum { POST_LIMIT = 1024 };
 
@@ -25,7 +26,7 @@ struct suzume_appl : public http::appl {
         if (! view.render (doc, content))
             return false;
         res.content_type = "text/html; charset=UTF-8";
-        res.body = encode_utf8 (content.str ());
+        encode_utf8 (content.str (), res.body);
         return true;
     }
 

@@ -57,6 +57,8 @@ decode_urlencoded (std::istream& input, std::size_t length,
     enum { DOLLAR = 7 };
     std::string name;
     std::string value;
+    std::wstring wname;
+    std::wstring wvalue;
     int next_state = 1;
     int xdigit = '0';
     for (;;) {
@@ -87,8 +89,10 @@ decode_urlencoded (std::istream& input, std::size_t length,
             break;
         case 6:
         case 7:
+            if (! decode_utf8 (value, wvalue))
+                return false;
             param.push_back (L"name");
-            param.push_back (decode_utf8 (value));
+            param.push_back (wvalue);
             value.clear ();
             break;
         case 8:
@@ -97,8 +101,10 @@ decode_urlencoded (std::istream& input, std::size_t length,
             break;
         case 13:
         case 14:
-            param.push_back (decode_utf8 (name));
-            param.push_back (decode_utf8 (value));
+            if (! decode_utf8 (name, wname) || ! decode_utf8 (value, wvalue))
+                return false;
+            param.push_back (wname);
+            param.push_back (wvalue);
             name.clear ();
             value.clear ();
             break;

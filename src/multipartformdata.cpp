@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <istream>
+#include <utility>
 #include "encodeu8.hpp"
 
 namespace http {
@@ -197,8 +198,12 @@ bool decode_multipart (
                 major_state = 3;
             }
             if (2 != major_state) {
-                param.push_back (decode_utf8 (name));
-                param.push_back (decode_utf8 (body));
+                std::wstring wname;
+                std::wstring wbody;
+                if (! decode_utf8 (name, wname) || ! decode_utf8 (body, wbody))
+                    return false;
+                param.push_back (std::move (wname));
+                param.push_back (std::move (wbody));
                 body.clear ();
             }
         }

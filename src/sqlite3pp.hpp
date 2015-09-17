@@ -3,6 +3,7 @@
 
 #include <string>
 #include <memory>
+#include <utility>
 #include <sqlite3.h>
 #include "encodeu8.hpp"
 
@@ -17,7 +18,8 @@ public:
     int bind (int n, double v) { return sqlite3_bind_double (mstmt.get (), n, v); }
     int bind (int n, std::wstring s)
     {
-        std::string t (encode_utf8 (s));
+        std::string t;
+        encode_utf8 (s, t);
         return sqlite3_bind_text (
             mstmt.get (), n, t.c_str (), (int)t.size (), SQLITE_TRANSIENT);
     }
@@ -26,10 +28,11 @@ public:
     double column_double (int n) { return sqlite3_column_double (mstmt.get (), n); }
     std::wstring column_string (int n)
     {
-        return decode_utf8 (
-            std::string(
-                (char const*)sqlite3_column_text (mstmt.get (), n),
-                sqlite3_column_bytes (mstmt.get (), n)));
+        std::wstring t;
+        std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
+                       sqlite3_column_bytes (mstmt.get (), n));
+        decode_utf8 (s, t);
+        return std::move (t);
     }
 };
 

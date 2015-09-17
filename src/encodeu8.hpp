@@ -3,8 +3,7 @@
 
 #include <string>
 
-std::wstring decode_utf8 (std::string octets);
-
-std::string encode_utf8 (std::wstring str);
+bool decode_utf8 (std::string const& octets, std::wstring& str);
+bool encode_utf8 (std::wstring const& str, std::string& octets);
 
 #endif

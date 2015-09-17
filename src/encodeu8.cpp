@@ -1,8 +1,9 @@
 #include <string>
+#include <algorithm>
 #include "encodeu8.hpp"
 
-std::string
-encode_utf8 (std::wstring str)
+bool
+encode_utf8 (std::wstring const& str, std::string& octets)
 {
     std::string buf;
     for (auto s = str.cbegin (); s != str.cend (); ++s) {
@@ -25,12 +26,15 @@ encode_utf8 (std::wstring str)
             buf.push_back (((code >>  6) & 0x3f) | 0x80);
             buf.push_back (( code        & 0x3f) | 0x80);
         }
+        else
+            return false;
     }
-    return buf;
+    std::swap (octets, buf);
+    return true;
 }
 
-std::wstring
-decode_utf8 (std::string octets)
+bool
+decode_utf8 (std::string const& octets, std::wstring& str)
 {
     static const int SHIFT[5][6] = {
     //     00  c0  e0  f0  80 
@@ -56,7 +60,7 @@ decode_utf8 (std::string octets)
                    : 0;
         state = 0 == cls ? 0 : SHIFT[state][cls];
         if (! state)
-            return L"";
+            return false;
         if (cls < 5)
             nbyte = cls;
         switch (cls) {
@@ -68,13 +72,14 @@ decode_utf8 (std::string octets)
         }
         if (1 == state) {
             if (code < LOWERBOUND[nbyte] || UPPERBOUND < code)
-                return L"";
+                return false;
             if (0xd800L <= code && code <= 0xdfffL) // UTF-16 Surrogate Code
-                return L"";
+                return false;
             buf.push_back (code);
         }
     }
     if (1 != state)
-        return L"";
-    return buf;
+        return false;
+    std::swap (str, buf);
+    return true;
 }

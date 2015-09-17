@@ -13,9 +13,10 @@ struct suzume_view {
     bool render (wjson::json& doc, std::wostream& output)
     {
         std::string octets;
+        std::wstring src;
         if (! slurp (octets))
             return false;
-        std::wstring src (decode_utf8 (octets));
+        decode_utf8 (octets, src);
 
         wmustache v;
         if (! v.assemble (src))
