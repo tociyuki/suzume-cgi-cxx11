@@ -37,10 +37,9 @@ matchtail (std::string const &s, std::string const &t)
 
 // media_type
 //
-//  tchar+ ('/' tchar+)? \s*
+//  \s* tchar+ ('/' tchar+)? \s*
 //  (';' \s* tchar+ \s*
 //       '=' \s* (tchar+ | '"' (qchar | '\\' (qchar | ["\\]))* '"') \s*)*
-//  \s*
 //
 //  tchar: [!#$%&'*+\-.^_`|~0-9A-Za-z]
 //  qchar: [\x21\x23-\x5b\x5d-\x7e]  // exclude ["\\]
@@ -49,9 +48,9 @@ decode_media_type (std::string const& fieldvalue,
     std::string& media_type, std::vector<std::string>& media_param)
 {
     static const uint8_t SHIFT[15][10] = {
-    //      t     /     v     \s    =     "     \\    ;     $
+    //      tchar /     qchar \s    =     "     \\    ;     $
         {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S1
+        {0, 0x12, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, // S1
         {0, 0x12, 0x13, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S2
         {0, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S3
         {0, 0x14, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S4
@@ -154,7 +153,7 @@ decode_multipart_formdata (std::istream& input,
     std::vector<std::wstring>& formdata)
 {
     static const int SHIFT[9][7] = {
-    //      t     v     \s    :     \r    \n
+    //      tchar vchar \s    :     \r    \n
         {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
         {0, 0x12, 0x00, 0X00, 0x00, 0x00, 0x00}, // S1: tchar S2
         {0, 0x12, 0x00, 0x00, 0x03, 0x00, 0x00}, // S2: tchar S2 | ':' S3
