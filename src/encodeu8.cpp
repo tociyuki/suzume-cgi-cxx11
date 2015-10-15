@@ -1,11 +1,12 @@
 #include <string>
-#include <algorithm>
+#include <utility>
 #include "encodeu8.hpp"
 
 bool
 encode_utf8 (std::wstring const& str, std::string& octets)
 {
     std::string buf;
+    octets.clear ();
     for (auto s = str.cbegin (); s != str.cend (); ++s) {
         uint32_t code = static_cast<uint32_t> (*s);
         if (code < 0x80) {
@@ -47,6 +48,7 @@ decode_utf8 (std::string const& octets, std::wstring& str)
     static const uint32_t LOWERBOUND[5] = {0, 0, 0x80L, 0x0800L, 0x10000L};
     static const uint32_t UPPERBOUND = 0x10ffffL;
     std::wstring buf;
+    str.clear ();
     int state = 1;
     int nbyte = 1;
     uint32_t code = 0;
@@ -78,8 +80,7 @@ decode_utf8 (std::string const& octets, std::wstring& str)
             buf.push_back (code);
         }
     }
-    if (1 != state)
-        return false;
-    std::swap (str, buf);
-    return true;
+    if (1 == state)
+        std::swap (str, buf);
+    return 1 == state;
 }

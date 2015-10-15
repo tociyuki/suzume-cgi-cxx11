@@ -402,16 +402,19 @@ bool loader::parse (std::wstring const& src, json& node)
             int expr = -(ctrl + 1);
             int nrhs = size_rhs[expr];
             std::deque<json>::iterator v = dstack.end () - nrhs - 1;
+            json value;
+            if (nrhs > 0)
+                value = v[1];
             switch (ctrl) {
             //case  -1: break;  // value : SCALAR
             //case  -2: break;  // value : STRING
             //case  -3: break;  // value : array
             //case  -4: break;  // value : object
             case  -5:   // value : '[' ']'
-                v[1] = json (json::array {});
+                value = json (json::array {});
                 break;
             case  -6:   // array : '[' value_list ']'
-                v[1] = std::move (v[2]);
+                value = std::move (v[2]);
                 break;
             case  -7:   // value_list : value_list ',' value
                 v[1].as<json::array> ().push_back (std::move (v[3]));
@@ -420,14 +423,14 @@ bool loader::parse (std::wstring const& src, json& node)
                 {
                     json::array a;
                     a.push_back (std::move (v[1]));
-                    v[1] = json (std::move (a));
+                    value = json (std::move (a));
                 }
                 break;
             case  -9:   // object : '{' '}'
-                v[1] = json (json::object {});
+                value = json (json::object {});
                 break;
             case -10:   // object : '{' member_list '}'
-                v[1] = std::move (v[2]);
+                value = std::move (v[2]);
                 break;
             case -11:   // member_list : member_list ',' STRING ':' value
                 v[1].as<json::object> ()[std::move(v[3].as<std::wstring> ())] = std::move (v[5]);
@@ -436,7 +439,7 @@ bool loader::parse (std::wstring const& src, json& node)
                 {
                     json::object h;
                     h[std::move (v[1].as<std::wstring> ())] = std::move (v[3]);
-                    v[1] = json (std::move (h));
+                    value = json (std::move (h));
                 }
                 break;
             case ACC:
@@ -444,12 +447,13 @@ bool loader::parse (std::wstring const& src, json& node)
                 return true;
             default: break;
             }
-            for (int i = 1; i < nrhs; ++i)
+            for (int i = 0; i < nrhs; ++i)
                 dstack.pop_back ();
             for (int i = 0; i < nrhs; ++i)
                 sstack.pop_back ();
             int next_state = grammar[sstack.back ()][gotocol[expr]];
             sstack.push_back (next_state);
+            dstack.push_back (value);
         }
     }
     return false;

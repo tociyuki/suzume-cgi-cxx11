@@ -1,7 +1,7 @@
 #include <string>
 #include <vector>
 #include <istream>
-#include <algorithm>
+#include <utility>
 #include "encodeu8.hpp"
 
 namespace http {
