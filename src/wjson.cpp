@@ -403,8 +403,6 @@ bool loader::parse (std::wstring const& src, json& node)
             int nrhs = size_rhs[expr];
             std::deque<json>::iterator v = dstack.end () - nrhs - 1;
             json value;
-            if (nrhs > 0)
-                value = v[1];
             switch (ctrl) {
             //case  -1: break;  // value : SCALAR
             //case  -2: break;  // value : STRING
@@ -414,10 +412,11 @@ bool loader::parse (std::wstring const& src, json& node)
                 value = json (json::array {});
                 break;
             case  -6:   // array : '[' value_list ']'
-                value = std::move (v[2]);
+                std::swap (value, v[2]);
                 break;
             case  -7:   // value_list : value_list ',' value
-                v[1].as<json::array> ().push_back (std::move (v[3]));
+                std::swap (value, v[1]);
+                value.as<json::array> ().push_back (std::move (v[3]));
                 break;
             case  -8:   // value_list : value
                 {
@@ -430,10 +429,11 @@ bool loader::parse (std::wstring const& src, json& node)
                 value = json (json::object {});
                 break;
             case -10:   // object : '{' member_list '}'
-                value = std::move (v[2]);
+                std::swap (value, v[2]);
                 break;
             case -11:   // member_list : member_list ',' STRING ':' value
-                v[1].as<json::object> ()[std::move(v[3].as<std::wstring> ())] = std::move (v[5]);
+                std::swap (value, v[1]);
+                value.as<json::object> ()[std::move(v[3].as<std::wstring> ())] = std::move (v[5]);
                 break;
             case -12:   // member_list : STRING ':' value
                 {
@@ -443,9 +443,12 @@ bool loader::parse (std::wstring const& src, json& node)
                 }
                 break;
             case ACC:
-                node = std::move (dstack.back ());
+                std::swap (node, dstack.back ());
                 return true;
-            default: break;
+            default:
+                if (nrhs > 0)
+                    std::swap (value, v[1]);
+                break;
             }
             for (int i = 0; i < nrhs; ++i)
                 dstack.pop_back ();
@@ -453,7 +456,7 @@ bool loader::parse (std::wstring const& src, json& node)
                 sstack.pop_back ();
             int next_state = grammar[sstack.back ()][gotocol[expr]];
             sstack.push_back (next_state);
-            dstack.push_back (value);
+            dstack.push_back (std::move (value));
         }
     }
     return false;
