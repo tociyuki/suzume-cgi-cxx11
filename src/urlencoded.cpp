@@ -3,7 +3,7 @@
 #include <istream>
 #include <sstream>
 #include <utility>
-#include "encodeu8.hpp"
+#include "encode-utf8.hpp"
 
 namespace http {
 static inline int
@@ -79,7 +79,7 @@ decode_urlencoded (
             value.push_back ('+' == octet ? ' ' : octet);
             break;
         case 0x40:
-            if (! decode_utf8 (value, wvalue))
+            if (! wjson::decode_utf8 (value, wvalue))
                 return false;
             param.push_back (L"name");
             param.push_back (L""); std::swap (param.back (), wvalue);
@@ -90,7 +90,7 @@ decode_urlencoded (
             value.clear ();
             break;
         case 0x60:
-            if (! decode_utf8 (name, wname) || ! decode_utf8 (value, wvalue))
+            if (! wjson::decode_utf8 (name, wname) || ! wjson::decode_utf8 (value, wvalue))
                 return false;
             param.push_back (L""); std::swap (param.back (), wname);
             param.push_back (L""); std::swap (param.back (), wvalue);

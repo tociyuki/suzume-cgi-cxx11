@@ -3,12 +3,11 @@
 #include <iostream>
 #include <sstream>
 #include <csignal>
-#include "wjson.hpp"
+#include "value.hpp"
 #include "suzume_data.hpp"
 #include "suzume_view.hpp"
 #include "http.hpp"
 #include "runcgi.hpp"
-#include "encodeu8.hpp"
 
 enum { POST_LIMIT = 1024 };
 
@@ -21,13 +20,13 @@ struct suzume_appl : public http::appl {
 
     bool get_frontpage (http::request& req, http::response& res)
     {
-        wjson::json doc (wjson::object {});
+        wjson::value_type doc;
         data.recents (doc);
-        std::wostringstream content;
+        std::ostringstream content;
         if (! view.render (doc, content))
             return false;
         res.content_type = "text/html; charset=UTF-8";
-        encode_utf8 (content.str (), res.body);
+        res.body = content.str ();
         return true;
     }
 

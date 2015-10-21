@@ -3,25 +3,21 @@
 
 #include <string>
 #include <fstream>
-#include "wjson.hpp"
-#include "wmustache.hpp"
-#include "encodeu8.hpp"
+#include "value.hpp"
+#include "mustache.hpp"
+#include "encode-utf8.hpp"
 
 struct suzume_view {
     suzume_view (std::string const& a) : srcname (a) {}
 
-    bool render (wjson::json& doc, std::wostream& output)
+    bool render (wjson::value_type& doc, std::ostream& output)
     {
         std::string octets;
-        std::wstring src;
         if (! slurp (octets))
             return false;
-        decode_utf8 (octets, src);
-
-        wmustache v;
-        if (! v.assemble (src))
+        wjson::mustache v;
+        if (! v.assemble (octets))
             return false;
-
         v.render (doc, output);
         return true;
     }

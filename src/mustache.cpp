@@ -1,14 +1,20 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "wmustache.hpp"
+#include "mustache.hpp"
+#include "encode-utf8.hpp"
 
-wmustache::wmustache () : mstmt () {}
-wmustache::~wmustache () {}
+namespace wjson {
+
+mustache::mustache () : mstmt () {}
+mustache::~mustache () {}
 
 bool
-wmustache::assemble (std::wstring const& str)
+mustache::assemble (std::string const& octets)
 {
+    std::wstring str;
+    if (! decode_utf8 (octets, str))
+        return false;
     std::size_t addrsect;
     std::vector<std::size_t> backpatch;
     std::wstring::const_iterator s = str.cbegin ();
@@ -51,7 +57,7 @@ wmustache::assemble (std::wstring const& str)
 }
 
 int
-wmustache::next_token (std::wstring::const_iterator& s,
+mustache::next_token (std::wstring::const_iterator& s,
     std::wstring::const_iterator const eos,
     std::wstring& plain, std::wstring& key) const
 {
@@ -84,7 +90,7 @@ wmustache::next_token (std::wstring::const_iterator& s,
 }
 
 int
-wmustache::scan_markup (std::wstring::const_iterator& s,
+mustache::scan_markup (std::wstring::const_iterator& s,
     std::wstring::const_iterator const eos,
     std::wstring& key) const
 {
@@ -102,7 +108,7 @@ wmustache::scan_markup (std::wstring::const_iterator& s,
        {0,  0, 10,  0,  0}, // S9: '}' MATCH
     };
     key.clear ();
-    s += 2; // skip L"{{"
+    s += 2; // skip "{{"
     int next_state = 1;
     int kind = GETHTML;
     std::wstring::const_iterator beginkey = s;
@@ -141,14 +147,15 @@ wmustache::scan_markup (std::wstring::const_iterator& s,
 }
 
 bool
-wmustache::keychar (int ch) const
+mustache::keychar (int ch) const
 {
     return ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
          || ('0' <= ch && ch <= '9') || '_' == ch || '?' == ch || '!' == ch
          || '/' == ch || '.' == ch || '-' == ch;
 }
 
-int wmustache::skip_comment (std::wstring::const_iterator& s,
+int
+mustache::skip_comment (std::wstring::const_iterator& s,
     std::wstring::const_iterator const eos) const
 {
     int level = 2;
@@ -169,78 +176,82 @@ int wmustache::skip_comment (std::wstring::const_iterator& s,
     return COMMENT;
 }
 
-void wmustache::render (wjson::json& param, std::wostream& out) const
+void
+mustache::render (wjson::value_type& param, std::ostream& out) const
 {
-    std::vector<wjson::json *> env;
+    std::vector<wjson::value_type *> env;
     env.push_back (&param);
     render_section (env, out, 0, mstmt.size ());
     env.back () = nullptr;
 }
 
-void wmustache::render_section (
-    std::vector<wjson::json *>& env, std::wostream& out,
+void
+mustache::render_section (
+    std::vector<wjson::value_type *>& env, std::ostream& out,
     std::size_t ip, std::size_t const ip_end) const
 {
     while (ip < ip_end) {
         int op = mstmt[ip].op;
         if (PLAIN == op) {
-            out << mstmt[ip].str;
+            render_string (mstmt[ip].str, out);
             ++ip;
             continue;
         }
-        wjson::json it;
+        wjson::value_type it;
         bool const exists = lookup (env, mstmt[ip].str, it);
         std::size_t const ip_next = op < SECTION ? ip : mstmt[ip].addr - 1;
         std::size_t const ip_section = ip + 1;
-        if (! exists || it.is<std::nullptr_t> ()) {
+        if (! exists || it.tag () == wjson::VALUE_NULL) {
             if (UNLESS == op)
                 render_section (env, out, ip_section, ip_next);
         }
-        else if (it.is<bool> ()) {
-            if (GETHTML == op || GETASIS == op)
-                out << it.dump ();
-            else if (UNLESS == op && ! it.as<bool> ())
+        else if (it.tag () == wjson::VALUE_BOOLEAN) {
+            if (GETHTML == op || GETASIS == op) {
+                if (it.boolean ())
+                    out << "true";
+                else
+                    out << "false";
+            }
+            else if (UNLESS == op && ! it.boolean ())
                 render_section (env, out, ip_section, ip_next);
-            else if (SECTION == op && it.as<bool> ())
+            else if (SECTION == op && it.boolean ())
                 render_section (env, out, ip_section, ip_next);
         }
-        else if (it.is<int> ()) {
+        else if (it.tag () == wjson::VALUE_FIXNUM) {
             if (GETHTML == op || GETASIS == op)
-                out << it.dump ();
-            else if (UNLESS == op && ! it.as<int> ())
+                out << it.fixnum ();
+            else if (UNLESS == op && ! it.fixnum ())
                 render_section (env, out, ip_section, ip_next);
-            else if (SECTION == op && it.as<int> ())
+            else if (SECTION == op && it.fixnum ())
                 render_section (env, out, ip_section, ip_next);            
         }
-        else if (it.is<double> ()) {
+        else if (it.tag () == wjson::VALUE_FLONUM) {
             if (GETHTML == op || GETASIS == op)
-                out << it.dump ();
+                render_flonum (it.flonum (), out);
             else if (SECTION == op)
                 render_section (env, out, ip_section, ip_next);            
         }
-        else if (it.is<std::wstring> ()) {
-            bool const is_empty = it.as<std::wstring> ().empty ();
+        else if (it.tag () == wjson::VALUE_DATETIME) {
             if (GETASIS == op)
-                out << it.as<std::wstring> ();
-            else if (GETHTML == op) {
-                std::wstring str (it.as<std::wstring> ());
-                for (wchar_t c : str)
-                    switch (c) {
-                    case L'&': out << L"&amp;"; break;
-                    case L'<': out << L"&lt;"; break;
-                    case L'>': out << L"&gt;"; break;
-                    case L'"': out << L"&quot;"; break;
-                    case L'\'': out << L"&#39;"; break;
-                    default: out << c; break;
-                    }
-            }
+                render_string (it.datetime (), out);
+            else if (GETHTML == op)
+                render_html (it.datetime (), out);
+            else if (SECTION == op)
+                render_section (env, out, ip_section, ip_next);            
+        }
+        else if (it.tag () == wjson::VALUE_STRING) {
+            bool const is_empty = it.size () == 0;
+            if (GETASIS == op)
+                render_string (it.string (), out);
+            else if (GETHTML == op)
+                render_html (it.string (), out);
             else if (UNLESS == op && is_empty)
                 render_section (env, out, ip_section, ip_next);
             else if (SECTION == op && ! is_empty)
                 render_section (env, out, ip_section, ip_next);
         }
-        else if (it.is<wjson::object> ()) {
-            bool const is_empty = it.as<wjson::object> ().empty ();
+        else if (it.tag () == wjson::VALUE_TABLE) {
+            bool const is_empty = it.size () == 0;
             if (UNLESS == op && is_empty)
                 render_section (env, out, ip_section, ip_next);
             else if (SECTION == op && ! is_empty) {
@@ -250,11 +261,11 @@ void wmustache::render_section (
                 env.pop_back ();
             }
         }
-        else if (it.is<wjson::array> ()) {
-            if (UNLESS == op && it.as<wjson::array> ().empty ())
+        else if (it.tag () == wjson::VALUE_ARRAY) {
+            if (UNLESS == op && it.size () == 0)
                 render_section (env, out, ip_section, ip_next);
             else if (SECTION == op) {
-                for (auto& x : it.as<wjson::array> ()) {
+                for (auto& x : it.array ()) {
                     env.push_back (&x);
                     render_section (env, out, ip_section, ip_next);
                     env.back () = nullptr;
@@ -266,18 +277,56 @@ void wmustache::render_section (
     }
 }
 
-bool wmustache::lookup (std::vector<wjson::json *>& env,
+bool
+mustache::lookup (std::vector<wjson::value_type *>& env,
     std::wstring const& key,
-    wjson::json& it) const
+    wjson::value_type& it) const
 {
     for (int i = env.size (); i > 0; --i)
-        if (env[i - 1]->is<wjson::object> ()) {
-            wjson::object const& h = env[i - 1]->as<wjson::object> ();
-            wjson::object::const_iterator j = h.find (key);
-            if (j != h.end ()) {
+        if (env[i - 1]->tag () == wjson::VALUE_TABLE) {
+            auto j = env[i - 1]->table ().find (key);
+            if (j != env[i - 1]->table ().end ()) {
                 it = j->second;
                 return true;
             }
         }
     return false;
 }
+
+void
+mustache::render_flonum (double const x, std::ostream& out) const
+{
+    char buf[32];
+    std::snprintf (buf, sizeof (buf) / sizeof (buf[0]), "%.15g", x);
+    std::string t (buf);
+    if (t.find_first_of (".e") == std::string::npos)
+        t += ".0";
+    out << t;
+}
+
+void
+mustache::render_string (std::wstring const& str, std::ostream& out) const
+{
+    for (std::wstring::const_iterator s = str.cbegin (); s < str.cend (); ++s) {
+        uint32_t const uc = static_cast<uint32_t> (*s);
+        encode_utf8 (out, uc);
+    }
+}
+
+void
+mustache::render_html (std::wstring const& str, std::ostream& out) const
+{
+    for (std::wstring::const_iterator s = str.cbegin (); s < str.cend (); ++s) {
+        uint32_t const uc = static_cast<uint32_t> (*s);
+        switch (uc) {
+        default: encode_utf8 (out, uc); break;
+        case '&': out << "&amp;"; break;
+        case '<': out << "&lt;"; break;
+        case '>': out << "&gt;"; break;
+        case '"': out << "&quot;"; break;
+        case '\'': out << "&#39;"; break;
+        }
+    }
+}
+
+}//namespace wjson

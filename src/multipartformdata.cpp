@@ -2,7 +2,7 @@
 #include <vector>
 #include <istream>
 #include <utility>
-#include "encodeu8.hpp"
+#include "encode-utf8.hpp"
 
 namespace http {
 
@@ -227,8 +227,8 @@ decode_multipart_formdata (std::istream& input,
                     std::wstring wname;
                     std::wstring wbody;
                     if (name.empty ()
-                            || ! decode_utf8 (name, wname)
-                            || ! decode_utf8(body, wbody)) {
+                            || ! wjson::decode_utf8 (name, wname)
+                            || ! wjson::decode_utf8(body, wbody)) {
                         next_state = 0;
                         break;
                     }

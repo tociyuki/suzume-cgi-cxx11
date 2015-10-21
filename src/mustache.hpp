@@ -19,9 +19,11 @@
 #include <string>
 #include <vector>
 #include <ostream>
-#include "wjson.hpp"
+#include "value.hpp"
 
-class wmustache {
+namespace wjson {
+
+class mustache {
 public:
     enum {PLAIN, GETASIS, GETHTML, ENDSECT, UNLESS, SECTION, COMMENT, ENDMARK};
 
@@ -33,19 +35,19 @@ public:
             : op (a), str (b), addr (c) {}
     };
 
-    wmustache ();
-    virtual ~wmustache ();
-    bool assemble (std::wstring const& str);
-    void render (wjson::json& param, std::wostream& out) const;
+    mustache ();
+    virtual ~mustache ();
+    bool assemble (std::string const& str);
+    void render (wjson::value_type& param, std::ostream& out) const;
 
 protected:
     std::vector<instruction> mstmt;
 
 private:
-    wmustache (wmustache const&);
-    wmustache (wmustache&&);
-    wmustache& operator= (wmustache const&);
-    wmustache& operator= (wmustache&&);
+    mustache (mustache const&);
+    mustache (mustache&&);
+    mustache& operator= (mustache const&);
+    mustache& operator= (mustache&&);
 
     int next_token (std::wstring::const_iterator& s,
         std::wstring::const_iterator const eos,
@@ -58,9 +60,15 @@ private:
         std::wstring::const_iterator const eos) const;
 
     void render_section (
-        std::vector<wjson::json *>& env, std::wostream& out,
+        std::vector<wjson::value_type *>& env, std::ostream& out,
         std::size_t ip, std::size_t const ip_end) const;
-    bool lookup (std::vector<wjson::json *>& env,
+    bool lookup (std::vector<wjson::value_type *>& env,
         std::wstring const& key,
-        wjson::json& it) const;
+        wjson::value_type& it) const;
+
+    void render_flonum (double const x, std::ostream& out) const;
+    void render_string (std::wstring const& str, std::ostream& out) const;
+    void render_html (std::wstring const& str, std::ostream& out) const;
 };
+
+}//namespace wjson

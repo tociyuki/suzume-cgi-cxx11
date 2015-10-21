@@ -1,13 +1,14 @@
 PROGRAM=suzume.cgi
-OBJS=build/main.o build/encodeu8.o build/multipartformdata.o\
-     build/urlencoded.o build/runcgi.o build/wjson.o build/wmustache.o
+OBJS=build/main.o build/encode-utf8.o build/multipartformdata.o \
+     build/urlencoded.o build/runcgi.o build/value.o build/setter.o \
+     build/mustache.o
 
-MAIN_DEPS=src/sqlite3pp.hpp src/wjson.hpp src/wmustache.hpp\
-	 src/encodeu8.hpp src/http.hpp\
+MAIN_DEPS=src/sqlite3pp.hpp src/value.hpp src/mustache.hpp\
+	 src/encode-utf8.hpp src/http.hpp\
 	 src/suzume_data.hpp src/suzume_view.hpp
-ENCODEU8_DEPS=src/encodeu8.hpp
-MULTIAPART_DEPS=src/http.hpp src/encodeu8.hpp
-URLENCODED_DEPS=src/http.hpp src/encodeu8.hpp
+ENCODEUTF8_DEPS=src/encode-utf8.hpp
+MULTIAPART_DEPS=src/http.hpp src/encode-utf8.hpp
+URLENCODED_DEPS=src/http.hpp src/encode-utf8.hpp
 RUNCGI_DEPS=src/http.hpp src/runcgi.hpp
 
 CXX=clang++
@@ -25,8 +26,8 @@ $(PROGRAM) : $(OBJS)
 build/main.o : src/main.cpp $(MAIN_DEPS)
 	$(CXX) $(CXXFLAGS) -o build/main.o -c src/main.cpp
 
-build/encodeu8.o : src/encodeu8.cpp $(ENCODEU8_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/encodeu8.o -c src/encodeu8.cpp
+build/encode-utf8.o : src/encode-utf8.cpp $(ENCODEU8_DEPS)
+	$(CXX) $(CXXFLAGS) -o build/encode-utf8.o -c src/encode-utf8.cpp
 
 build/multipartformdata.o : src/multipartformdata.cpp $(MULITPART_DEPS)
 	$(CXX) $(CXXFLAGS) -o build/multipartformdata.o -c src/multipartformdata.cpp
@@ -37,11 +38,14 @@ build/urlencoded.o : src/urlencoded.cpp $(URLENCODED_DEPS)
 build/runcgi.o : src/runcgi.cpp $(RUNCGI_DEPS)
 	$(CXX) $(CXXFLAGS) -o build/runcgi.o -c src/runcgi.cpp
 
-build/wjson.o : src/wjson.cpp src/wjson.hpp
-	$(CXX) $(CXXFLAGS) -o build/wjson.o -c src/wjson.cpp
+build/value.o : src/value.cpp src/value.hpp
+	$(CXX) $(CXXFLAGS) -o build/value.o -c src/value.cpp
 
-build/wmustache.o : src/wmustache.cpp src/wmustache.hpp src/wjson.hpp
-	$(CXX) $(CXXFLAGS) -o build/wmustache.o -c src/wmustache.cpp
+build/setter.o : src/setter.cpp src/value.hpp
+	$(CXX) $(CXXFLAGS) -o build/setter.o -c src/setter.cpp
+
+build/mustache.o : src/mustache.cpp src/mustache.hpp src/value.hpp
+	$(CXX) $(CXXFLAGS) -o build/mustache.o -c src/mustache.cpp
 
 clean :
 	rm -f $(PROGRAM) $(OBJS)

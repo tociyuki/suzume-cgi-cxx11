@@ -2,7 +2,7 @@
 #define SUZUME_DATA_H
 
 #include <string>
-#include "wjson.hpp"
+#include "value.hpp"
 #include "sqlite3pp.hpp"
 
 struct suzume_data {
@@ -20,15 +20,15 @@ struct suzume_data {
             dbh.execute ("ROLLBACK;");
     }
 
-    void recents (wjson::json& doc) const
+    void recents (wjson::value_type& doc) const
     {
-        doc.as<wjson::object> ()[L"recents"] = wjson::json (wjson::array {});
+        doc = wjson::table ();
+        doc[L"recents"] = wjson::array ();
         sqlite3pp::connection dbh (dbname);
         auto sth = dbh.prepare ("SELECT body FROM entries ORDER BY id DESC LIMIT 20;");
-        while (SQLITE_ROW == sth.step ()) {
-            wjson::json entry (wjson::object {});
-            entry.as<wjson::object> ()[L"body"] = wjson::json (sth.column_string (0));
-            doc[L"recents"].as<wjson::array> ().push_back (std::move (entry));
+        for (std::size_t i = 0; SQLITE_ROW == sth.step (); ++i) {
+            doc[L"recents"][i] = wjson::table ();
+            doc[L"recents"][i][L"body"] = sth.column_string (0);
         }
     }
 

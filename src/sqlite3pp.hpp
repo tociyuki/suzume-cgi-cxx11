@@ -5,7 +5,7 @@
 #include <memory>
 #include <utility>
 #include <sqlite3.h>
-#include "encodeu8.hpp"
+#include "encode-utf8.hpp"
 
 namespace sqlite3pp {
 class statement {
@@ -19,7 +19,7 @@ public:
     int bind (int n, std::wstring s)
     {
         std::string t;
-        encode_utf8 (s, t);
+        wjson::encode_utf8 (s, t);
         return sqlite3_bind_text (
             mstmt.get (), n, t.c_str (), (int)t.size (), SQLITE_TRANSIENT);
     }
@@ -31,7 +31,7 @@ public:
         std::wstring t;
         std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
                        sqlite3_column_bytes (mstmt.get (), n));
-        decode_utf8 (s, t);
+        wjson::decode_utf8 (s, t);
         return std::move (t);
     }
 };

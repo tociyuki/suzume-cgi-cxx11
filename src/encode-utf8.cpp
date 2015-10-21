@@ -1,6 +1,8 @@
 #include <string>
 #include <utility>
-#include "encodeu8.hpp"
+#include "encode-utf8.hpp"
+
+namespace wjson {
 
 bool
 encode_utf8 (std::wstring const& str, std::string& octets)
@@ -84,3 +86,5 @@ decode_utf8 (std::string const& octets, std::wstring& str)
         std::swap (str, buf);
     return 1 == state;
 }
+
+}//namespace wjson
