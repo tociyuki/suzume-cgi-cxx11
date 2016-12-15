@@ -27,8 +27,10 @@ struct suzume_data {
         sqlite3pp::connection dbh (dbname);
         auto sth = dbh.prepare ("SELECT body FROM entries ORDER BY id DESC LIMIT 20;");
         for (std::size_t i = 0; SQLITE_ROW == sth.step (); ++i) {
+            std::wstring body;
+            sth.column_string (0, body);
             doc[L"recents"][i] = wjson::table ();
-            doc[L"recents"][i][L"body"] = sth.column_string (0);
+            doc[L"recents"][i][L"body"] = std::move (body);
         }
     }
 

@@ -1,6 +1,6 @@
-#ifndef HTTP_H
-#define HTTP_H
+#pragma once
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <map>
@@ -12,9 +12,19 @@ struct request {
     std::string method;
     std::string content_type;
     std::string content_length;
-    std::istream& input;
-    request (std::istream& input)
-        : env (), method (), content_type (), content_length (), input (input) {}
+    FILE* input;
+    request (FILE* ainput)
+        : env (), method (), content_type (), content_length (), input (ainput) {}
+};
+
+struct formdata {
+    formdata () : boundary (), parameter (), query_parameter () {}
+    bool ismultipart (std::string const& content_type);
+    bool decode (FILE* in, std::size_t content_length);
+    bool decode_query_string (std::string const& query_string);
+    std::string boundary;
+    std::vector<std::wstring> parameter;
+    std::vector<std::wstring> query_parameter;
 };
 
 struct response {
@@ -34,28 +44,4 @@ struct appl {
     virtual bool call (http::request& req, http::response& res) { return false; }
 };
 
-void push_pair (
-    int const state,
-    std::string& name, std::string& value,
-    std::vector<std::wstring>& param);
-
-bool is_multipart_formdata (std::string const& content_type, std::string& boundary);
-
-bool decode_media_type (std::string const& fieldvalue,
-    std::string& media_type, std::vector<std::string>& media_param);
-
-bool decode_multipart_formdata (std::istream& input,
-    std::size_t const content_length,
-    std::string const& boundary,
-    std::vector<std::wstring>& formdata);
-
-bool decode_urlencoded (
-    std::istream& input, std::size_t contentlength,
-    std::vector<std::wstring>& param);
-
-bool decode_urlencoded (
-    std::string const& str, std::vector<std::wstring>& param);
-
 }//namespace http
-
-#endif

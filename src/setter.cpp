@@ -69,9 +69,9 @@ setter_type::operator= (std::wstring const& x)
 {
     value_type* node = force ();
     if (VALUE_ARRAY == mpath.back ().mtag)
-        node->set (mpath.back ().midx, std::move(::wjson::string (x)));
+        node->set (mpath.back ().midx, ::wjson::string (x));
     else if (VALUE_TABLE == mpath.back ().mtag)
-        node->set (mpath.back ().mkey, std::move(::wjson::string (x)));
+        node->set (mpath.back ().mkey, ::wjson::string (x));
     return *this;
 }
 
@@ -80,9 +80,9 @@ setter_type::operator= (std::wstring&& x)
 {
     value_type* node = force ();
     if (VALUE_ARRAY == mpath.back ().mtag)
-        node->set (mpath.back ().midx, std::move(::wjson::string (std::move (x))));
+        node->set (mpath.back ().midx, ::wjson::string (std::move (x)));
     else if (VALUE_TABLE == mpath.back ().mtag)
-        node->set (mpath.back ().mkey, std::move(::wjson::string (std::move (x))));
+        node->set (mpath.back ().mkey, ::wjson::string (std::move (x)));
     return *this;
 }
 

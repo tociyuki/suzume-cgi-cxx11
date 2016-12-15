@@ -1,5 +1,4 @@
-#ifndef SQLITE3PP_H
-#define SQLITE3PP_H
+#pragma once
 
 #include <string>
 #include <memory>
@@ -8,6 +7,7 @@
 #include "encode-utf8.hpp"
 
 namespace sqlite3pp {
+
 class statement {
 private:
     std::shared_ptr<struct sqlite3_stmt> mstmt;
@@ -16,6 +16,10 @@ public:
     int reset () { return sqlite3_reset (mstmt.get ()); }
     int bind (int n, int v) { return sqlite3_bind_int (mstmt.get (), n, v); }
     int bind (int n, double v) { return sqlite3_bind_double (mstmt.get (), n, v); }
+    int step () { return sqlite3_step (mstmt.get ()); }
+    int column_int (int n) { return sqlite3_column_int (mstmt.get (), n); }
+    double column_double (int n) { return sqlite3_column_double (mstmt.get (), n); }
+
     int bind (int n, std::wstring s)
     {
         std::string t;
@@ -23,16 +27,21 @@ public:
         return sqlite3_bind_text (
             mstmt.get (), n, t.c_str (), (int)t.size (), SQLITE_TRANSIENT);
     }
-    int step () { return sqlite3_step (mstmt.get ()); }
-    int column_int (int n) { return sqlite3_column_int (mstmt.get (), n); }
-    double column_double (int n) { return sqlite3_column_double (mstmt.get (), n); }
+
     std::wstring column_string (int n)
     {
         std::wstring t;
         std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
                        sqlite3_column_bytes (mstmt.get (), n));
         wjson::decode_utf8 (s, t);
-        return std::move (t);
+        return t;
+    }
+
+    void column_string (int n, std::wstring& t)
+    {
+        std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
+                       sqlite3_column_bytes (mstmt.get (), n));
+        wjson::decode_utf8 (s, t);
     }
 };
 
@@ -67,6 +76,5 @@ public:
         return mstatus;
     }
 };
-} // namespace sqlite3pp
 
-#endif
+} // namespace sqlite3pp

@@ -57,12 +57,12 @@ struct suzume_appl : public http::appl {
             }
             if (content_length > POST_LIMIT)
                 return false;
-            std::vector<std::wstring> param;
-            std::string boundary;
-            if (! http::is_multipart_formdata (req.content_type, boundary))
+            http::formdata formdata;
+            if (! formdata.ismultipart (req.content_type))
                 return false;
-            http::decode_multipart_formdata (req.input, content_length, boundary, param);
-            return post_body (param, req, res);
+            if (! formdata.decode (req.input, content_length))
+                return false;
+            return post_body (formdata.parameter, req, res);
         }
         return false;
     }

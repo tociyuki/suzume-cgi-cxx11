@@ -1,14 +1,15 @@
-#include <iostream>
 #include <cstdlib>
+#include <unistd.h>
+#include <cstdio>
 #include "http.hpp"
 #include "runcgi.hpp"
 
 void runcgi (http::appl& app)
 {
-    http::request req (std::cin);
+    FILE* in = fdopen (dup (fileno (stdin)), "rb");
+    http::request req (in);
     http::response res;
     extern char** environ;
-
     for (char** p = environ; *p; ++p) {
         std::string s (*p);
         std::size_t i = s.find ("=");
@@ -28,19 +29,23 @@ void runcgi (http::appl& app)
         res.location.clear ();
         res.body = "error";
     }
+    fclose (in);
+
+    FILE* out = fdopen (dup (fileno (stdout)), "wb");
     if (res.status != "200")
-        std::cout << "Status: " << res.status << "\x0d\x0a";
+        std::fprintf (out, "Status: %s\x0d\x0a", res.status.c_str ());
     if (res.status == "303") {
-        std::cout << "Location: " << res.location << "\x0d\x0a";
+        std::fprintf (out, "Location: %s\x0d\x0a", res.location.c_str ());
     }
     else {
-        std::cout << "Content-Type: " << res.content_type << "\x0d\x0a";
-        std::cout << "Content-Length: " << res.body.size () << "\x0d\x0a";
+        std::fprintf (out, "Content-Type: %s\x0d\x0a", res.content_type.c_str ());
+        std::fprintf (out, "Content-Length: %zu\x0d\x0a", res.body.size ());
     }
     for (std::size_t i = 0; i < res.headers.size (); i += 2)
-        std::cout << res.headers[i] << ": " << res.headers[i + 1] << "\x0d\x0a";
-    std::cout << "\x0d\x0a";
+        std::fprintf (out, "%s: %s\x0d\x0a",
+            res.headers[i].c_str (), res.headers[i + 1].c_str ());
+    std::fprintf (out, "\x0d\x0a");
     if (res.status != "303")
-        std::cout << res.body;
+        std::fwrite (&res.body[0], sizeof (res.body[0]), res.body.size(), out);
+    fclose (out);
 }
-

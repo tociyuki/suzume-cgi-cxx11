@@ -1,17 +1,28 @@
 #include <string>
 #include <vector>
-#include <istream>
+#include <cstdio>
 #include <utility>
+#include "http.hpp"
 #include "encode-utf8.hpp"
 
 namespace http {
 
-static inline std::size_t
-assoc_media_param (std::vector<std::string> const& param, std::string const& name)
+struct media_type {
+    media_type () : type (), parameter () {}
+    bool match (std::string const& fieldvalue);
+    std::size_t assoc (std::string const& attribute);
+    std::string type;
+    std::vector<std::string> parameter;
+};
+
+std::size_t
+media_type::assoc (std::string const& attribute)
 {
-    for (std::size_t i = 0; i + 1 < param.size (); i += 2)
-        if (param[i] == name)
+    for (std::size_t i = 0; i + 1 < parameter.size (); i += 2) {
+        if (parameter[i] == attribute) {
             return i + 1;
+        }
+    }
     return 0;
 }
 
@@ -21,11 +32,83 @@ lowercase (int const c)
     return 'A' <= c && c <= 'Z' ? c + ('a' - 'A') : c;
 }
 
-static inline int
-lookup_cls (uint32_t const tbl[], uint32_t const octet)
+bool
+media_type::match (std::string const& fieldvalue)
 {
-    uint32_t const clsbpos = (7 - (octet & 7)) << 2;
-    return octet < 128 ? ((tbl[octet >> 3] >> clsbpos) & 0x0f) : 0;
+    static const char CODE[] =
+    //   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_ !"#$%&'()*+,-./0123456789:;<=>?
+        "@@@@@@@@@C@@@@@@@@@@@@@@@@@@@@@@CBGBBBBBIIBBIBBFBBBBBBBBBBIDIEII"
+    //   @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+        "IBBBBBBBBBBBBBBBBBBBBBBBBBBIHIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBIBIB@";
+    static const char BASE[] = {
+        0-2, 2-1, 6-2, 8-1, 14-1, 18-2, 12-2, 24-3, 20-2, 27-1,
+        31-2, 39-2, 47-1,
+    };
+    static const unsigned short RULE[] = {
+        0x132, 0x022, 0x013, 0x133, 0x063, 0x073, 0x154, 0x143,
+        0x015, 0x155, 0x065, 0x075, 0x288, 0x098, 0x016, 0x5a8,
+        0x066, 0x076, 0x287, 0x077, 0x3ba, 0x0aa,     0,     0,
+        0x099, 0x0da, 0x5a9, 0x41b, 0x3bb, 0x46b, 0x47b, 0x3dc,
+        0x3dc, 0x3dc, 0x3dc, 0x3dc, 0x3dc, 0x3dc, 0x3dc, 0x3dd,
+        0x3dd, 0x3dd, 0x3dd, 0x3dd, 0x0ed, 0x0cd, 0x3dd, 0x41e,
+            0, 0x46e, 0x47e,
+    };
+    static const int NRULE = sizeof (RULE) / sizeof (RULE[0]);
+    type.clear ();
+    parameter.clear ();
+    bool isfilename = false;
+    std::string attribute;
+    std::string value;
+    std::string::const_iterator s = fieldvalue.cbegin ();
+    std::string::const_iterator const e = fieldvalue.cend ();
+    int next_state = 2;
+    for (; next_state >= 2 && s <= e; ++s) {
+        unsigned int const octet = s == e ? '\0' : static_cast<unsigned char> (*s);
+        int const code = s == e ? 1 : octet >= 128 ? 9
+            : (0x0d == next_state && isfilename && '\\' == octet) ? 9
+            : CODE[octet] - '@';
+        int const i = BASE[next_state - 2] + code;
+        int const rule = 0 <= i && i < NRULE ? RULE[i] : 0;
+        next_state = (rule & 0x00fU) == next_state ? ((rule & 0x0f0U) >> 4) : 0;
+        if (! next_state) {
+            break;
+        }
+        switch (rule & 0xf00U) {
+        case 0x100U:
+            type.push_back (lowercase (octet));
+            break;
+        case 0x200U:
+            attribute.push_back (lowercase (octet));
+            break;
+        case 0x300U:
+            value.push_back (octet);
+            break;
+        case 0x400U:
+            parameter.push_back (attribute);
+            parameter.push_back (value);
+            attribute.clear ();
+            value.clear ();
+            break;
+        case 0x500U:
+            isfilename = (attribute == "filename");
+            break;
+        }
+    }
+    return next_state == 1;
+}
+
+static std::string
+disposition_name (std::string const& disposition)
+{
+    media_type media;
+    if (media.match (disposition)) {
+        if (media.assoc ("filename") > 0)
+            return "";
+        std::size_t i = media.assoc ("name");
+        if (media.type == "form-data" && i > 0)
+            return media.parameter[i];
+    }
+    return "";
 }
 
 static inline bool
@@ -35,145 +118,37 @@ matchtail (std::string const &s, std::string const &t)
             && s.compare (s.size () - t.size (), t.size (), t) == 0;
 }
 
-// media_type
-//
-//  \s* tchar+ ('/' tchar+)? \s*
-//  (';' \s* tchar+ \s*
-//       '=' \s* (tchar+ | '"' (qchar | '\\' (qchar | ["\\]))* '"') \s*)*
-//
-//  tchar: [!#$%&'*+\-.^_`|~0-9A-Za-z]
-//  qchar: [\x21\x23-\x5b\x5d-\x7e]  // exclude ["\\]
 bool
-decode_media_type (std::string const& fieldvalue,
-    std::string& media_type, std::vector<std::string>& media_param)
+formdata::ismultipart (std::string const& content_type)
 {
-    static const uint8_t SHIFT[15][10] = {
-    //      tchar /     qchar \s    =     "     \\    ;     $
-        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0, 0x12, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00}, // S1
-        {0, 0x12, 0x13, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S2
-        {0, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S3
-        {0, 0x14, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S4
-        {0, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x0e}, // S5
-        {0, 0x27, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00}, // S6
-        {0, 0x27, 0x00, 0x00, 0x08, 0x59, 0x00, 0x00, 0x00, 0x00}, // S7
-        {0, 0x00, 0x00, 0x00, 0x08, 0x59, 0x00, 0x00, 0x00, 0x00}, // S8
-        {0, 0x3a, 0x00, 0x00, 0x09, 0x00, 0x0c, 0x00, 0x00, 0x00}, // S9
-        {0, 0x3a, 0x00, 0x00, 0x45, 0x00, 0x00, 0x00, 0x46, 0x4e}, // Sa
-        {0, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x00}, // Sb
-        {0, 0x3c, 0x3c, 0x3c, 0x3c, 0x3c, 0x0d, 0x0b, 0x3c, 0x00}, // Sc
-        {0, 0x00, 0x00, 0x00, 0x45, 0x00, 0x00, 0x00, 0x46, 0x4e}, // Sd
-        {1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Se
-    };
-    static uint32_t CCLASS[16] = {
-    //                  tn  r
-        0x00000000L, 0x04000000L, 0x00000000L, 0x00000000L,
-    //     !"#$%&'     ()*+,-./     01234567     89:;<=>?
-        0x41611111L, 0x33113112L, 0x11111111L, 0x11383533L,
-    //    @ABCDEFG     HIJKLMNO     PQRSTUVW     XYZ[\]^_
-        0x31111111L, 0x11111111L, 0x11111111L, 0x11137311L,
-    //    `abcdefg     hijklmno     pqrstuvw     xyz{|}~
-        0x11111111L, 0x11111111L, 0x11111111L, 0x11131310L,
-    };
-    bool isfilename = false;
-    std::string attribute;
-    std::string value;
-    std::string::const_iterator s = fieldvalue.cbegin ();
-    std::string::const_iterator const e = fieldvalue.cend ();
-    int next_state = 1;
-    for (; s <= e; ++s) {
-        uint32_t const octet = s == e ? '\0' : static_cast<uint8_t> (*s);
-        int const cls = s == e ? 9 : octet >= 128 ? 3
-            : (0x0c == next_state && isfilename && '\\' == octet) ? 3
-            : lookup_cls (CCLASS, octet);
-        int const prev_state = next_state;
-        next_state = 0 == cls ? 0 : (SHIFT[prev_state][cls] & 0x0f);
-        if (! next_state)
-            break;
-        switch (SHIFT[prev_state][cls] & 0xf0) {
-        case 0x10:
-            media_type.push_back (lowercase (octet));
-            break;
-        case 0x20:
-            attribute.push_back (lowercase (octet));
-            break;
-        case 0x30:
-            value.push_back (octet);
-            break;
-        case 0x40:
-            media_param.push_back (attribute);
-            media_param.push_back (value);
-            attribute.clear ();
-            value.clear ();
-            break;
-        case 0x50:
-            isfilename = attribute == "filename";
-            break;
-        }
+    media_type media;
+    if (! media.match (content_type)) {
+        return false;
     }
-    return (SHIFT[next_state][0] & 1) != 0;
-}
-
-bool
-is_multipart_formdata (std::string const& content_type, std::string& boundary)
-{
-    std::string media_type;
-    std::vector<std::string> media_param;
-    if (! decode_media_type (content_type, media_type, media_param))
+    if (media.type != "multipart/form-data") {
         return false;
-    if (media_type != "multipart/form-data")
+    }
+    std::size_t const i = media.assoc ("boundary");
+    if (! i) {
         return false;
-    std::size_t i = assoc_media_param (media_param, "boundary");
-    if (! i)
-        return false;
-    std::swap (boundary, media_param[i]);
+    }
+    std::swap (boundary, media.parameter[i]);
     return true;
 }
 
-static std::string
-decode_disposition_name (std::string const& disposition)
-{
-    std::string media_type;
-    std::vector<std::string> media_param;
-    std::string name;
-    if (decode_media_type (disposition, media_type, media_param)) {
-        if (assoc_media_param (media_param, "filename") > 0)
-            return "";
-        std::size_t i = assoc_media_param (media_param, "name");
-        if (media_type == "form-data" && i > 0)
-            return media_param[i];
-    }
-    return "";
-}
-
 bool
-decode_multipart_formdata (std::istream& input,
-    std::size_t const content_length,
-    std::string const& boundary,
-    std::vector<std::wstring>& formdata)
+formdata::decode (FILE* in, std::size_t content_length)
 {
-    static const int SHIFT[9][7] = {
-    //      tchar vchar \s    :     \r    \n
-        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0, 0x12, 0x00, 0X00, 0x00, 0x00, 0x00}, // S1: tchar S2
-        {0, 0x12, 0x00, 0x00, 0x03, 0x00, 0x00}, // S2: tchar S2 | ':' S3
-        {0, 0x24, 0x24, 0x03, 0x24, 0x05, 0x00}, // S3: vchar S4 | \s S3 | \r S5
-        {0, 0x24, 0x24, 0x24, 0x24, 0x05, 0x00}, // S4: vchar S4 | \s S4 | \r S5
-        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06}, // S5: \n S6
-        {0, 0x32, 0x00, 0x24, 0x00, 0x37, 0x00}, // S6: tchar S2 | \s S4 | \r S7
-        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}, // S7: \n S8
-        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S8: BODY
+    static const char CODE[] =
+        "@@@@@@@@@CF@@D@@@@@@@@@@@@@@@@@@CAEAAAAAEEAAEAAEAAAAAAAAAABEEEEE"
+        "EAAAAAAAAAAAAAAAAAAAAAAAAAAEEEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAEA@";
+    static const char BASE[] = {0-1, 1-1, 3-1, 8-1, 13-6, 14-1, 15-6};
+    static const unsigned short RULE[] = {
+        0x121, 0x122, 0x032, 0x243, 0x243, 0x033, 0x053, 0x243,
+        0x244, 0x244, 0x244, 0x054, 0x244, 0x065, 0x326, 0x087,
+        0x246, 0x376,
     };
-    static uint32_t CCLASS[16] = { // [!#$%&'*+\-.^_`|~0-9A-Za-z]
-    //                  tn  r
-        0x00000000L, 0x03600500L, 0x00000000L, 0x00000000L,
-    //     !"#$%&'     ()*+,-./     01234567     89:;<=>?
-        0x31211111L, 0x22112112L, 0x11111111L, 0x11422222L,
-    //    @ABCDEFG     HIJKLMNO     PQRSTUVW     XYZ[\]^_
-        0x21111111L, 0x11111111L, 0x11111111L, 0x11122211L,
-    //    `abcdefg     hijklmno     pqrstuvw     xyz{|}~
-        0x11111111L, 0x11111111L, 0x11111111L, 0x11121210L,
-    };
+    static const int NRULE = sizeof (RULE) / sizeof (RULE[0]);
     static const char LF = '\x0a';
     static const std::string DASH = "--";
     static const std::string CRLF = "\x0d\x0a";
@@ -184,31 +159,34 @@ decode_multipart_formdata (std::istream& input,
     std::string fieldvalue;
     std::string name;
     std::string body;
+    std::wstring wname;
+    std::wstring wbody;
+    parameter.clear ();
     std::size_t count = 0;
     int next_state = 9;
-    for (char ch; next_state < 11 && count < content_length && input.get (ch); ) {
+    for (int ch; next_state < 11 && count < content_length && (ch = getc (in)) != EOF; ) {
         ++count;
         if (8 > next_state) {
-            uint32_t const octet = static_cast<uint8_t> (ch);
-            int const cls = octet >= 128 ? 3 : lookup_cls (CCLASS, octet);
-            int const prev_state = next_state;
-            next_state = SHIFT[prev_state][cls] & 0x0f;
+            int const code = ch >= 128 ? 5 : CODE[ch] - '@';
+            int const i = BASE[next_state - 1] + code;
+            int const rule = 0 <= i && i < NRULE ? RULE[i] : 0;
+            next_state = (rule & 0x00fU) == next_state ? ((rule & 0x0f0U) >> 4) : 0;
             if (! next_state)
                 break;
-            switch (SHIFT[prev_state][cls] & 0xf0) {
-            case 0x10:
-                fieldname.push_back (lowercase (octet));
+            switch (rule & 0xf00U) {
+            case 0x100U:
+                fieldname.push_back (lowercase (ch));
                 break;
-            case 0x20:
-                fieldvalue.push_back (octet);
+            case 0x200U:
+                fieldvalue.push_back (ch);
                 break;
-            case 0x30:
+            case 0x300U:
                 if (fieldname == "content-disposition" && name.empty ())
-                    name = decode_disposition_name (fieldvalue);
+                    name = disposition_name (fieldvalue);
                 fieldname.clear ();
                 fieldvalue.clear ();
-                if (1 == cls)
-                    fieldname.push_back (lowercase (octet));
+                if (1 == code)
+                    fieldname.push_back (lowercase (ch));
                 break;
             }
         }
@@ -224,18 +202,16 @@ decode_multipart_formdata (std::istream& input,
                     next_state = 11;
                 }
                 if (8 != next_state) {
-                    std::wstring wname;
-                    std::wstring wbody;
                     if (name.empty ()
                             || ! wjson::decode_utf8 (name, wname)
-                            || ! wjson::decode_utf8(body, wbody)) {
+                            || ! wjson::decode_utf8 (body, wbody)) {
                         next_state = 0;
                         break;
                     }
-                    formdata.push_back (wname);
-                    formdata.push_back (wbody);
-                    name.clear ();
-                    body.clear ();
+                    parameter.push_back (L"");
+                    std::swap (parameter.back (), wname);
+                    parameter.push_back (L"");
+                    std::swap (parameter.back (), wbody);
                 }
             }
         }
@@ -257,7 +233,7 @@ decode_multipart_formdata (std::istream& input,
             }
         }
     }
-    for (char ch; count < content_length && input.get (ch); ) {
+    while (count < content_length && getc (in) != EOF) {
         ++count;
     }
     return 11 == next_state && count == content_length;

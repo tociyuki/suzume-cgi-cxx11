@@ -560,7 +560,7 @@ datetime (std::wstring const& x)
 {
     value_type e;
     e.assign_datetime (x);
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -568,7 +568,7 @@ datetime (std::wstring&& x)
 {
     value_type e;
     e.assign_datetime (std::move (x));
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -576,7 +576,7 @@ string (std::wstring const& x)
 {
     value_type e;
     e.assign_string (x);
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -584,7 +584,7 @@ string (std::wstring&& x)
 {
     value_type e;
     e.assign_string (std::move (x));
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -592,7 +592,7 @@ string ()
 {
     value_type e;
     e.assign_string (L"");
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -600,7 +600,7 @@ array ()
 {
     value_type e;
     e.assign_array ({});
-    return std::move (e);
+    return e;
 }
 
 value_type
@@ -608,7 +608,7 @@ table ()
 {
     value_type e;
     e.assign_table ({});
-    return std::move (e);
+    return e;
 }
 
 }//namespace wjson

@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <string>
+#include <cstdint>
 
 namespace wjson {
 
@@ -9,7 +10,7 @@ bool decode_utf8 (std::string const& octets, std::wstring& str);
 bool encode_utf8 (std::wstring const& str, std::string& octets);
 
 static inline void
-encode_utf8 (std::ostream& out, uint32_t const uc)
+encode_utf8 (std::ostream& out, std::uint32_t const uc)
 {
     if (uc < 0x80)
         out.put (uc);
