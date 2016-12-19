@@ -59,19 +59,4 @@ private:
         is.close ();
         return true;
     }
-
-    void
-    append_html (std::string const& str, std::string& output)
-    {
-        for (std::size_t i = 0; i < str.size (); ++i) {
-            int ch = static_cast<unsigned char> (str[i]);
-            switch (ch) {
-            case '&': output += "&amp;"; break;
-            case '<': output += "&lt;"; break;
-            case '>': output += "&gt;"; break;
-            case '"': output += "&quot;"; break;
-            default:  output.push_back (ch);
-            }
-        }
-    }
 };
