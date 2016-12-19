@@ -6,14 +6,14 @@ on Common Gateway Interface process by C++11.
 It contains 
 
  * a family of the mustache template engine
- * x-www-urlencoded decoder
+ * multipart/form-data decoder
+ * x-www-urlencoded decoder (not used)
  * sqlite3 cxx wrapper
- * json dumper/loader used by the template engine
 
 Version
 ------
 
-0.0.1
+0.0.2
 
 Build
 -----
