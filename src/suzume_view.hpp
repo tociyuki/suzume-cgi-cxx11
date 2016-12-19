@@ -26,13 +26,13 @@ struct suzume_view : public mustache::page_base {
         return true;
     }
 
-    void expand (mustache::layout_type const* layout, std::size_t ip,
+    void expand (mustache::layout_type const& layout, std::size_t ip,
         mustache::span_type const& op, std::string& output)
     {
         if (RECENTS == op.symbol) {
             if ('#' == op.code)
                 for (m_index = 0; m_index < m_doc->size (); ++m_index)
-                    layout->expand_block (ip, *this, output);
+                    layout.expand_block (ip, *this, output);
         }
     }
 

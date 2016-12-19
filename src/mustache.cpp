@@ -127,7 +127,7 @@ layout_type::expand_block (std::size_t ip, page_base& page, std::string& output)
             }
         }
         else if (EXPAND == op.element) {
-            page.expand (this, ip, op, output);
+            page.expand (*this, ip, op, output);
         }
         if ('#' == op.code)
             ip += op.size + 1;
