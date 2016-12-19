@@ -13,8 +13,8 @@ struct request {
     std::string content_type;
     std::string content_length;
     FILE* input;
-    request (FILE* ainput)
-        : env (), method (), content_type (), content_length (), input (ainput) {}
+    request ()
+        : env (), method (), content_type (), content_length (), input (nullptr) {}
 };
 
 struct formdata {
@@ -23,8 +23,8 @@ struct formdata {
     bool decode (FILE* in, std::size_t content_length);
     bool decode_query_string (std::string const& query_string);
     std::string boundary;
-    std::vector<std::wstring> parameter;
-    std::vector<std::wstring> query_parameter;
+    std::vector<std::string> parameter;
+    std::vector<std::string> query_parameter;
 };
 
 struct response {

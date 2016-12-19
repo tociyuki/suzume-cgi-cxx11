@@ -32,8 +32,6 @@ formdata::decode_query_string (std::string const& query_string)
     static const int NRULE = sizeof (RULE) / sizeof (RULE[0]);
     std::string name;
     std::string value;
-    std::wstring wname;
-    std::wstring wvalue;
     query_parameter.clear ();
     unsigned int xdigit = 0x30;  // '0'
     int next_state = 2;
@@ -59,23 +57,23 @@ formdata::decode_query_string (std::string const& query_string)
             value.push_back ('+' == octet ? ' ' : octet);
             break;
         case 0x400U:
-            if (! wjson::decode_utf8 (value, wvalue))
+            if (! wjson::verify_utf8 (value))
                 return false;
-            query_parameter.push_back (L".keyword");
-            query_parameter.push_back (L"");
-            std::swap (query_parameter.back (), wvalue);
+            query_parameter.push_back (".keyword");
+            query_parameter.push_back ("");
+            std::swap (query_parameter.back (), value);
             break;
         case 0x500U:
             std::swap (name, value);
             value.clear ();
             break;
         case 0x600U:
-            if (! wjson::decode_utf8 (name, wname) || ! wjson::decode_utf8 (value, wvalue))
+            if (! wjson::verify_utf8 (name) || ! wjson::verify_utf8 (value))
                 return false;
-            query_parameter.push_back (L"");
-            std::swap (query_parameter.back (), wname);
-            query_parameter.push_back (L"");
-            std::swap (query_parameter.back (), wvalue);
+            query_parameter.push_back ("");
+            std::swap (query_parameter.back (), name);
+            query_parameter.push_back ("");
+            std::swap (query_parameter.back (), value);
             value.clear ();
             break;
         }

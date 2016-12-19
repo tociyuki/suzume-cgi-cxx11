@@ -1,14 +1,13 @@
-#ifndef SUZUME_DATA_H
-#define SUZUME_DATA_H
+#pragma once
 
 #include <string>
-#include "value.hpp"
+#include <utility>
 #include "sqlite3pp.hpp"
 
 struct suzume_data {
-    suzume_data (std::string const& a) : dbname (a) {}
+    explicit suzume_data (std::string const& a) : dbname (a) {}
 
-    void insert (std::wstring const& body) const
+    void insert (std::string const& body) const
     {
         sqlite3pp::connection dbh (dbname);
         dbh.execute ("BEGIN;");
@@ -20,22 +19,18 @@ struct suzume_data {
             dbh.execute ("ROLLBACK;");
     }
 
-    void recents (wjson::value_type& doc) const
+    void recents (std::vector<std::string>& doc) const
     {
-        doc = wjson::table ();
-        doc[L"recents"] = wjson::array ();
+        std::string body;
         sqlite3pp::connection dbh (dbname);
         auto sth = dbh.prepare ("SELECT body FROM entries ORDER BY id DESC LIMIT 20;");
         for (std::size_t i = 0; SQLITE_ROW == sth.step (); ++i) {
-            std::wstring body;
             sth.column_string (0, body);
-            doc[L"recents"][i] = wjson::table ();
-            doc[L"recents"][i][L"body"] = std::move (body);
+            doc.emplace_back ("");
+            std::swap (doc.back (), body);
         }
     }
 
 private:
     std::string const dbname;
 };
-
-#endif

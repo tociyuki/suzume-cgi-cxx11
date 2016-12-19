@@ -1,26 +1,150 @@
-#include <iostream>
 #include <string>
 #include <vector>
+#include <cstdio>
 #include "mustache.hpp"
-#include "encode-utf8.hpp"
 
-namespace wjson {
+namespace mustache {
 
-mustache::mustache () : m_program () {}
-mustache::~mustache () {}
+// match XML entity: '&' ('#' ([0-9]+ | 'x' [0-9A-Fa-f]+) | [A-Za-z0-9]+) ';'
+static bool
+scan_entity (std::string::const_iterator& first, std::string::const_iterator last)
+{
+    static const char CODE[] =
+        "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@B@@A@@@@@@@@@FFFFFFFFFF@G@@@@"
+        "@CCCCCCDDDDDDDDDDDDDDDDDDDD@@@@@@CCCCCCDDDDDDDDDDDDDDDDDEDD@@@@@";
+    static const char BASE[] = {0-1, 1-2, 6-3, 11-5, 14-6, 13-3};
+    static const unsigned char RULE[] = {
+        0x32, 0x53, 0x43, 0x43, 0x43, 0x43, 0x44, 0x44, 0x44, 0x44, 0x14,
+        0x75, 0x65, 0x77, 0x66, 0x16, 0x77, 0x17
+    };
+    static const std::size_t NRULE = sizeof (RULE) / sizeof (RULE[0]);
+    std::string::const_iterator p = first;
+    int state = 2;
+    for (int count = 0; count < 32 && state > 1 && p != last; ++count) {
+        int const ch = static_cast<unsigned char> (*p++);
+        int const code = ch < 128 ? CODE[ch] - '@' : 0;
+        int const i = BASE[state - 2] + code;
+        unsigned int const rule = 0 <= i && i < NRULE ? RULE[i] : 0;
+        state = (rule & 0x0fU) == state ? ((rule & 0xf0U) >> 4) : 0;
+    }
+    if (1 == state)
+        first = p - 1;
+    return 1 == state;
+}
+
+// append HTML string
+// if 0==escape_level then unescape
+// if 1==escape_level then escape HTML without already escaped entity
+// if 2==escape_level then escape HTML everything
+void
+page_base::append_html (int escape_level, std::string::const_iterator first, std::string::const_iterator last, std::string& output)
+{
+    if (0 == escape_level) {
+        output.append (first, last);
+        return;
+    }
+    std::string::const_iterator amp;
+    for (; first < last; ++first)
+        switch (*first) {
+        default: output.push_back (*first); break;
+        case '<': output += "&lt;"; break;
+        case '>': output += "&gt;"; break;
+        case '"': output += "&quot;"; break;
+        case '&':
+            amp = first;
+            if (2 == escape_level || ! scan_entity (first, last))
+                output += "&amp;";
+            else
+                output.append (amp, first + 1);
+            break;
+        }
+}
+
+void
+page_base::append_html (int escape_level, double x, std::string& output)
+{
+    char buf[32];
+    std::snprintf (buf, sizeof (buf) / sizeof (buf[0]), "%.15g", x);
+    std::string t = buf;
+    if (t.find_first_of (".e") == t.npos)
+        t += ".0";
+    output += t;
+}
+
+layout_type::layout_type () : m_source (), m_program (), m_binding () {}
+layout_type::~layout_type () {}
+
+void
+layout_type::bind (std::string const& name, int symbol, int element)
+{
+    m_binding[name] = {symbol, element};
+}
+
+void
+layout_type::expand (page_base& page, std::string& output) const
+{
+    expand_block (0, page, output);
+}
+
+void
+layout_type::expand_block (std::size_t ip, page_base& page, std::string& output) const
+{
+    std::string::const_iterator s = m_source.cbegin ();
+    std::size_t const limit = ip + m_program[ip].size + 1;
+    ++ip;
+    for (; ip < limit; ++ip) {
+        span_type const& op = m_program[ip];
+        if ('+' == op.code) {
+            output.append (s + op.first, s + op.last);
+        }
+        else if (STRING == op.element) {
+            if ('$' == op.code || '&' == op.code) {
+                std::string v;
+                page.valueof (op.symbol, v);
+                page_base::append_html ('$' == op.code ? 2 : 0, v.cbegin (), v.cend (), output);
+            }
+        }
+        else if (STRITER == op.element) {
+            if ('$' == op.code || '&' == op.code) {
+                std::string::const_iterator v1 = m_source.cbegin ();
+                std::string::const_iterator v2 = v1;
+                page.valueof (op.symbol, v1, v2);
+                page_base::append_html ('$' == op.code ? 2 : 0, v1, v2, output);
+            }
+        }
+        else if (INTEGER == op.element) {
+            if ('$' == op.code || '&' == op.code) {
+                long v;
+                page.valueof (op.symbol, v);
+                output += std::to_string (v);
+            }
+        }
+        else if (DOUBLE == op.element) {
+            if ('$' == op.code || '&' == op.code) {
+                double v;
+                page.valueof (op.symbol, v);
+                page_base::append_html (2, v, output);
+            }
+        }
+        else if (EXPAND == op.element) {
+            page.expand (this, ip, op, output);
+        }
+        if ('#' == op.code)
+            ip += op.size + 1;
+    }
+}
 
 bool
-mustache::assemble (std::string const& octets)
+layout_type::assemble (std::string const& src)
 {
+    m_source = src;
     m_program.clear ();
-    if (! decode_utf8 (octets, m_source))
-        return false;
-    m_program.push_back({L'#', 0, 0, 0});
+    m_program.push_back({'#', 0, 0, 0, 0, 0});
+    span_type plain {'+', 0, 0, 0, 0, 0};
+    span_type tag;
+    std::vector<std::size_t> section_nest;
     std::size_t dot = 0;
     std::size_t const eos = m_source.size ();
-    span_type plain {L'+', 0, 0, 0};
-    span_type tag;
-    std::vector<std::size_t> stack;
     while (dot < eos) {
         std::size_t const pos = dot;
         dot = match (pos, tag);
@@ -31,36 +155,34 @@ mustache::assemble (std::string const& octets)
             m_program.push_back (plain);
         }
         plain.first = dot;
-        if (L'#' == tag.code || L'^' == tag.code)
-            stack.push_back (m_program.size ());
+        if ('!' == tag.code)
+            continue;
+        if ('#' == tag.code || '^' == tag.code)
+            section_nest.push_back (m_program.size ());
         m_program.push_back (tag);
-        if (L'/' == tag.code) {
-            if (stack.empty ())
+        if ('/' == tag.code) {
+            if (section_nest.empty ())
                 return false;
-            std::size_t const loc = stack.back ();
-            stack.pop_back ();
-            span_type& sharp = m_program[loc];
-            if (m_source.compare (sharp.first, sharp.last - sharp.first,
+            std::size_t const loc = section_nest.back ();
+            span_type& section = m_program[loc];
+            section_nest.pop_back ();
+            if (m_source.compare (section.first, section.last - section.first,
                     m_source, tag.first, tag.last - tag.first) != 0)
                 return false;
-            sharp.size = m_program.size () - loc - 2;
-            m_program.back ().size = sharp.size;
+            section.size = m_program.back ().size = m_program.size () - loc - 2;
         }
     }
     if (plain.first < dot) {
         plain.last = dot;
         m_program.push_back (plain);
     }
-    if (! stack.empty ())
-        return false;
-    m_program.push_back({L'/', 0, 0, 0});
-    m_program[0].size = m_program.size () - 2;
-    m_program.back ().size = m_program[0].size;
-    return true;
+    m_program.push_back({'/', 0, 0, 0, 0, 0});
+    m_program[0].size = m_program.back ().size = m_program.size () - 2;
+    return section_nest.empty ();
 }
 
 std::size_t
-mustache::match (std::size_t const pos, span_type& op) const
+layout_type::match (std::size_t const pos, span_type& op) const
 {
     static const std::string CODE =
         "@@@@@@@@@DD@@D@@@@@@@@@@@@@@@@@@D@@BC@B@CCCCCCCBCCCCCCCCCCC@@C@C"
@@ -75,11 +197,11 @@ mustache::match (std::size_t const pos, span_type& op) const
     static const std::size_t NRULE = sizeof (RULE) / sizeof (RULE[0]);
     std::size_t dot = pos;
     int next_state = 2;
-    op.code = L'$';
+    op.code = '$';
     op.size = 0;
     for (; next_state > 1 && dot < m_source.size (); ++dot) {
-        wchar_t const ch = m_source[dot];
-        if (4 == next_state && L'!' == ch)
+        int const ch = static_cast<unsigned char> (m_source[dot]);
+        if (4 == next_state && '!' == ch)
             return skip_comment (pos, op);
         int const code = ch < 127 ? CODE[ch] - '@' : 0;
         int const state = next_state;
@@ -88,7 +210,7 @@ mustache::match (std::size_t const pos, span_type& op) const
         next_state = (rule & 0x00fU) == state ? (rule & 0x0f0U) >> 4 : 0;
         switch (rule & 0xf00U) {
         case 0x100U:
-            op.code = L'{' == ch ? L'&' : ch;
+            op.code = '{' == ch ? '&' : ch;
             break;
         case 0x200U:
             op.first = dot;
@@ -98,16 +220,21 @@ mustache::match (std::size_t const pos, span_type& op) const
             break;
         }
     }
-    if (1 != next_state)
-        return pos + 1;
-    if (L'$' != op.code && L'&' != op.code && dot < m_source.size ()
-            && L'\n' == m_source[dot])
-        ++dot;
-    return dot;
+    if (1 == next_state) {
+        auto it = m_binding.find (m_source.substr (op.first, op.last - op.first));
+        if (it != m_binding.end ()) {
+            op.symbol = it->second.symbol;
+            op.element = it->second.element;
+        }
+        if ('$' != op.code && '&' != op.code
+                && dot < m_source.size () && '\n' == m_source[dot])
+            ++dot;
+    }
+    return 1 == next_state ? dot : pos + 1;
 }
 
 std::size_t
-mustache::skip_comment (std::size_t const pos, span_type& op) const
+layout_type::skip_comment (std::size_t const pos, span_type& op) const
 {
     op.code = L'!';
     op.first = pos + 3;
@@ -127,153 +254,4 @@ mustache::skip_comment (std::size_t const pos, span_type& op) const
     return dot;
 }
 
-void
-mustache::render (wjson::value_type& param, std::ostream& output) const
-{
-    std::vector<wjson::value_type *> env;
-    env.push_back (&param);
-    render_block (0, env, output);
-    env.back () = nullptr;
-}
-
-void
-mustache::render_block (std::size_t ip,
-    std::vector<wjson::value_type *>& env, std::ostream& output) const
-{
-    std::wstring::const_iterator const s = m_source.cbegin ();
-    std::wstring key;
-    std::size_t const limit = ip + m_program[ip].size + 1;
-    ++ip;
-    for (; ip < limit; ++ip) {
-        span_type const& op = m_program[ip];
-        if (L'+' == op.code) {
-            for (std::size_t i = op.first; i < op.last; ++i)
-                encode_utf8 (output, static_cast<std::uint32_t> (m_source[i]));
-        }
-        else if (L'!' == op.code) {
-            ;
-        }
-        else {
-            key.assign (s + op.first, s + op.last);
-            wjson::value_type it;
-            bool const exists = lookup (env, key, it);
-            if (! exists || it.tag () == wjson::VALUE_NULL) {
-                if (L'^' == op.code)
-                    render_block (ip, env, output);
-            }
-            else if (it.tag () == wjson::VALUE_BOOLEAN) {
-                if (L'^' == op.code && ! it.boolean ())
-                    render_block (ip, env, output);
-                else if (L'#' == op.code && it.boolean ())
-                    render_block (ip, env, output);
-            }
-            else if (it.tag () == wjson::VALUE_FIXNUM) {
-                if (L'$' == op.code || L'&' == op.code)
-                    output << it.fixnum ();
-            }
-            else if (it.tag () == wjson::VALUE_FLONUM) {
-                if (L'$' == op.code || L'&' == op.code)
-                    render_flonum (it.flonum (), output);
-            }
-            else if (it.tag () == wjson::VALUE_DATETIME) {
-                if (L'&' == op.code)
-                    render_string (it.datetime (), output);
-                else if (L'$' == op.code)
-                    render_html (it.datetime (), output);
-                else if (L'#' == op.code)
-                    render_block (ip, env, output);
-            }
-            else if (it.tag () == wjson::VALUE_STRING) {
-                bool const is_empty = it.size () == 0;
-                if (L'&' == op.code)
-                    render_string (it.string (), output);
-                else if (L'$' == op.code)
-                    render_html (it.string (), output);
-                else if (L'^' == op.code && is_empty)
-                    render_block (ip, env, output);
-                else if (L'#' == op.code && ! is_empty)
-                    render_block (ip, env, output);
-            }
-            else if (it.tag () == wjson::VALUE_TABLE) {
-                bool const is_empty = it.size () == 0;
-                if (L'^' == op.code && is_empty) {
-                    render_block (ip, env, output);
-                }
-                else if (L'#' == op.code && ! is_empty) {
-                    env.push_back (&it);
-                    render_block (ip, env, output);
-                    env.back () = nullptr;
-                    env.pop_back ();
-                }
-            }
-            else if (it.tag () == wjson::VALUE_ARRAY) {
-                if (L'^' == op.code && it.size () == 0) {
-                    render_block (ip, env, output);
-                }
-                else if (L'#' == op.code) {
-                    for (auto& x : it.array ()) {
-                        env.push_back (&x);
-                        render_block (ip, env, output);
-                        env.back () = nullptr;
-                        env.pop_back ();
-                    }
-                }
-            }
-        }
-        if (L'#' == op.code || L'^' == op.code)
-            ip += op.size + 1;
-    }
-}
-
-bool
-mustache::lookup (std::vector<wjson::value_type *>& env,
-    std::wstring const& key, wjson::value_type& it) const
-{
-    for (int i = env.size (); i > 0; --i)
-        if (env[i - 1]->tag () == wjson::VALUE_TABLE) {
-            auto j = env[i - 1]->table ().find (key);
-            if (j != env[i - 1]->table ().end ()) {
-                it = j->second;
-                return true;
-            }
-        }
-    return false;
-}
-
-void
-mustache::render_flonum (double const x, std::ostream& output) const
-{
-    char buf[32];
-    std::snprintf (buf, sizeof (buf) / sizeof (buf[0]), "%.15g", x);
-    std::string t (buf);
-    if (t.find_first_of (".e") == std::string::npos)
-        t += ".0";
-    output << t;
-}
-
-void
-mustache::render_string (std::wstring const& str, std::ostream& output) const
-{
-    for (std::wstring::const_iterator s = str.cbegin (); s < str.cend (); ++s) {
-        uint32_t const uc = static_cast<uint32_t> (*s);
-        encode_utf8 (output, uc);
-    }
-}
-
-void
-mustache::render_html (std::wstring const& str, std::ostream& output) const
-{
-    for (std::wstring::const_iterator s = str.cbegin (); s < str.cend (); ++s) {
-        uint32_t const uc = static_cast<uint32_t> (*s);
-        switch (uc) {
-        default: encode_utf8 (output, uc); break;
-        case '&': output << "&amp;"; break;
-        case '<': output << "&lt;"; break;
-        case '>': output << "&gt;"; break;
-        case '"': output << "&quot;"; break;
-        case '\'': output << "&#39;"; break;
-        }
-    }
-}
-
-}//namespace wjson
+}//namespace mustache

@@ -5,6 +5,28 @@
 
 namespace wjson {
 
+void
+encode_utf8 (std::ostream& out, std::uint32_t const uc)
+{
+    if (uc < 0x80)
+        out.put (uc);
+    else if (uc < 0x800) {
+        out.put (((uc >>  6) & 0xff) | 0xc0);
+        out.put (( uc        & 0x3f) | 0x80);
+    }
+    else if (uc < 0x10000) {
+        out.put (((uc >> 12) & 0x0f) | 0xe0);
+        out.put (((uc >>  6) & 0x3f) | 0x80);
+        out.put (( uc        & 0x3f) | 0x80);
+    }
+    else if (uc < 0x110000) {
+        out.put (((uc >> 18) & 0x07) | 0xf0);
+        out.put (((uc >> 12) & 0x3f) | 0x80);
+        out.put (((uc >>  6) & 0x3f) | 0x80);
+        out.put (( uc        & 0x3f) | 0x80);
+    }
+}
+
 bool
 encode_utf8 (std::wstring const& str, std::string& octets)
 {
@@ -79,6 +101,48 @@ decode_utf8 (std::string const& octets, std::wstring& str)
     }
     if (1 == state)
         std::swap (str, buf);
+    return 1 == state;
+}
+
+bool
+verify_utf8 (std::string const& octets)
+{
+    static const unsigned long LOWERBOUND[5] = {0, 0, 0x80LU, 0x0800LU, 0x10000LU};
+    static const unsigned long UPPERBOUND = 0x10ffffLU;
+    int state = 1;
+    int length = 1;
+    unsigned long code = 0;
+    for (auto s = octets.cbegin (); state > 0 && s != octets.cend (); ++s) {
+        unsigned long octet = static_cast<unsigned char> (*s);
+        if (0 == (0x80U & octet)) {
+            length = state = (1 == state) ? 1 : 0;
+            code = octet;
+        }
+        else if (0xc0U == (0xe0U & octet)) {
+            length = state = (1 == state) ? 2 : 0;
+            code = 0x1f & octet;
+        }
+        else if (0xe0U == (0xf0U & octet)) {
+            length = state = (1 == state) ? 3 : 0;
+            code = 0x0f & octet;
+        }
+        else if (0xf0U == (0xf8U & octet)) {
+            length = state = (1 == state) ? 4 : 0;
+            code = 0x07 & octet;
+        }
+        else if (0x80U == (0xc0U & octet)) {
+            state = (1 < state) ? state - 1 : 0;
+            code = (code << 6) | (0x3f & octet);
+            if (1 == state) {
+                if (code < LOWERBOUND[length] || UPPERBOUND < code) {
+                    return false;
+                }
+                if (0xd800L <= code && code <= 0xdfffL) {
+                    return false;
+                }
+            }
+        }
+    }
     return 1 == state;
 }
 

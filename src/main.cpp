@@ -1,9 +1,9 @@
 #include <string>
+#include <vector>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <csignal>
-#include "value.hpp"
 #include "suzume_data.hpp"
 #include "suzume_view.hpp"
 #include "http.hpp"
@@ -20,20 +20,16 @@ struct suzume_appl : public http::appl {
 
     bool get_frontpage (http::request& req, http::response& res)
     {
-        wjson::value_type doc;
+        std::vector<std::string> doc;
         data.recents (doc);
-        std::ostringstream content;
-        if (! view.render (doc, content))
-            return false;
         res.content_type = "text/html; charset=UTF-8";
-        res.body = content.str ();
-        return true;
+        return view.render (doc, res.body);
     }
 
-    bool post_body (std::vector<std::wstring>& param, http::request& req, http::response& res)
+    bool post_body (std::vector<std::string>& param, http::request& req, http::response& res)
     {
         for (auto i = param.begin (); i < param.end (); i += 2) {
-            if (i[0] == L"body") {
+            if (i[0] == "body") {
                 data.insert (i[1]);
                 res.status = "303";
                 res.location = "suzume.cgi";
@@ -45,8 +41,9 @@ struct suzume_appl : public http::appl {
 
     bool call (http::request& req, http::response& res)
     {
-        if (req.method == "GET")
+        if (req.method == "GET") {
             return get_frontpage (req, res);
+        }
         else if (req.method == "POST") {
             long content_length = 0;
             try {

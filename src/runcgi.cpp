@@ -1,27 +1,33 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <cstdio>
+#include <cstring>
 #include "http.hpp"
 #include "runcgi.hpp"
 
 void runcgi (http::appl& app)
 {
-    FILE* in = fdopen (dup (fileno (stdin)), "rb");
-    http::request req (in);
+    http::request req;
     http::response res;
-    extern char** environ;
-    for (char** p = environ; *p; ++p) {
-        std::string s (*p);
-        std::size_t i = s.find ("=");
-        std::string k = s.substr (0, i);
-        std::string v = i < s.size () ? s.substr (i + 1) : "";
+    req.input = fdopen (dup (fileno (stdin)), "rb");
+    req.env["PATH_INFO"] = "";
+    for (char const* const* p = environ; *p; ++p) {
+        char const* eq = std::strchr (*p, '=');
+        if (eq == nullptr)
+            continue;
+        std::string k = std::string(*p, eq - *p);
+        std::string v = std::string (eq + 1);
         if (k == "REQUEST_METHOD")
-            req.method = v;
+            req.method = v == "POST" ? v : "GET";
         else if (k == "CONTENT_TYPE")
             req.content_type = v;
         else if (k == "CONTENT_LENGTH")
             req.content_length = v;
         req.env[k] = v;
+    }
+    if (req.env.at ("SCRIPT_NAME") == "/") {
+        req.env["PATH_INFO"] = req.env["SCRIPT_NAME"] + req.env["PATCH_INFO"];
+        req.env["SCRIPT_NAME"] = "";
     }
     if (! app.call (req, res)) {
         res.status = "500";
@@ -29,7 +35,7 @@ void runcgi (http::appl& app)
         res.location.clear ();
         res.body = "error";
     }
-    fclose (in);
+    fclose (req.input);
 
     FILE* out = fdopen (dup (fileno (stdout)), "wb");
     if (res.status != "200")

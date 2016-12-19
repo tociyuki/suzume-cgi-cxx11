@@ -4,7 +4,6 @@
 #include <memory>
 #include <utility>
 #include <sqlite3.h>
-#include "encode-utf8.hpp"
 
 namespace sqlite3pp {
 
@@ -20,28 +19,23 @@ public:
     int column_int (int n) { return sqlite3_column_int (mstmt.get (), n); }
     double column_double (int n) { return sqlite3_column_double (mstmt.get (), n); }
 
-    int bind (int n, std::wstring s)
+    int bind (int n, std::string s)
     {
-        std::string t;
-        wjson::encode_utf8 (s, t);
         return sqlite3_bind_text (
-            mstmt.get (), n, t.c_str (), (int)t.size (), SQLITE_TRANSIENT);
+            mstmt.get (), n, s.c_str (), (int)s.size (), SQLITE_TRANSIENT);
     }
 
-    std::wstring column_string (int n)
-    {
-        std::wstring t;
-        std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
-                       sqlite3_column_bytes (mstmt.get (), n));
-        wjson::decode_utf8 (s, t);
-        return t;
-    }
-
-    void column_string (int n, std::wstring& t)
+    std::string column_string (int n)
     {
         std::string s ((char const*)sqlite3_column_text (mstmt.get (), n),
                        sqlite3_column_bytes (mstmt.get (), n));
-        wjson::decode_utf8 (s, t);
+        return s;
+    }
+
+    void column_string (int n, std::string& t)
+    {
+        t.assign ((char const*)sqlite3_column_text (mstmt.get (), n),
+                       sqlite3_column_bytes (mstmt.get (), n));
     }
 };
 

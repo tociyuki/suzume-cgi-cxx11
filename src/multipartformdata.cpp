@@ -159,8 +159,6 @@ formdata::decode (FILE* in, std::size_t content_length)
     std::string fieldvalue;
     std::string name;
     std::string body;
-    std::wstring wname;
-    std::wstring wbody;
     parameter.clear ();
     std::size_t count = 0;
     int next_state = 9;
@@ -203,15 +201,15 @@ formdata::decode (FILE* in, std::size_t content_length)
                 }
                 if (8 != next_state) {
                     if (name.empty ()
-                            || ! wjson::decode_utf8 (name, wname)
-                            || ! wjson::decode_utf8 (body, wbody)) {
+                            || ! wjson::verify_utf8 (name)
+                            || ! wjson::verify_utf8 (body)) {
                         next_state = 0;
                         break;
                     }
-                    parameter.push_back (L"");
-                    std::swap (parameter.back (), wname);
-                    parameter.push_back (L"");
-                    std::swap (parameter.back (), wbody);
+                    parameter.push_back ("");
+                    std::swap (parameter.back (), name);
+                    parameter.push_back ("");
+                    std::swap (parameter.back (), body);
                 }
             }
         }
