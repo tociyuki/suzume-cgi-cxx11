@@ -18,7 +18,7 @@ struct suzume_view : public mustache::page_base {
         if (! slurp (src))
             return false;
         mustache::layout_type layout;
-        layout.bind ("recents", RECENTS, mustache::EXPAND);
+        layout.bind ("recents", RECENTS, mustache::FOR);
         layout.bind ("body",    BODY,    mustache::STRING);
         if (! layout.assemble (src))
             return false;
@@ -26,14 +26,19 @@ struct suzume_view : public mustache::page_base {
         return true;
     }
 
-    void expand (mustache::layout_type const& layout, std::size_t ip,
-        mustache::span_type const& op, std::string& output)
+    void iter (int symbol)
     {
-        if (RECENTS == op.symbol) {
-            if ('#' == op.code)
-                for (m_index = 0; m_index < m_doc->size (); ++m_index)
-                    layout.expand_block (ip, *this, output);
-        }
+        if (RECENTS == symbol) m_index = 0;
+    }
+
+    void valueof (int symbol, bool& v)
+    {
+        if (RECENTS == symbol) v = m_index < m_doc->size ();
+    }
+
+    void next (int symbol)
+    {
+        if (RECENTS == symbol) ++m_index;
     }
 
     void valueof (int symbol, std::string& v)

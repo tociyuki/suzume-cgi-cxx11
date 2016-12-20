@@ -114,19 +114,42 @@ layout_type::expand_block (std::size_t ip, page_base& page, std::string& output)
         }
         else if (INTEGER == op.element) {
             if ('$' == op.code || '&' == op.code) {
-                long v;
+                long v = 0;
                 page.valueof (op.symbol, v);
                 output += std::to_string (v);
             }
         }
         else if (DOUBLE == op.element) {
             if ('$' == op.code || '&' == op.code) {
-                double v;
+                double v = 0.0;
                 page.valueof (op.symbol, v);
                 page_base::append_html (2, v, output);
             }
         }
-        else if (EXPAND == op.element) {
+        else if (IF == op.element) {
+            if ('#' == op.code || '^' == op.code) {
+                bool v = false;
+                page.valueof (op.symbol, v);
+                if (v ^ ('^' == op.code))
+                    expand_block (ip, page, output);
+            }
+        }
+        else if (FOR == op.element) {
+            if ('#' == op.code || '^' == op.code) {
+                page.iter (op.symbol);
+                bool v = false;
+                page.valueof (op.symbol, v);
+                if ('#' == op.code)
+                    while (v) {
+                        expand_block (ip, page, output);
+                        page.next (op.symbol);
+                        page.valueof (op.symbol, v);
+                    }
+                else if (! v)
+                    expand_block (ip, page, output);
+            }
+        }
+        else if (CUSTOM == op.element) {
             page.expand (*this, ip, op, output);
         }
         if ('#' == op.code)

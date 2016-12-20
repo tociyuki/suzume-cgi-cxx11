@@ -23,6 +23,7 @@ all : $(PROGRAM)
 
 $(PROGRAM) : $(OBJS)
 	$(CXX) $(LDFLAGS) -o $(PROGRAM) $(OBJS) $(LIBS)
+	chmod 755 $(PROGRAM)
 
 build/main.o : src/main.cpp $(MAIN_DEPS)
 	$(CXX) $(CXXFLAGS) -o build/main.o -c src/main.cpp

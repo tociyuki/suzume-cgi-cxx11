@@ -23,7 +23,7 @@
 namespace mustache {
 
 enum {
-    STRING = 1, STRITER, INTEGER, DOUBLE, EXPAND
+    STRING = 1, STRITER, INTEGER, DOUBLE, IF, FOR, CUSTOM
 };
 
 class layout_type;
@@ -49,6 +49,9 @@ public:
     virtual void valueof (int symbol, std::string::const_iterator& v1, std::string::const_iterator& v2) {}
     virtual void valueof (int symbol, long& v) { v = 0; }
     virtual void valueof (int symbol, double& v) { v = 0.0; }
+    virtual void valueof (int symbol, bool& v) { v = false; }
+    virtual void iter (int symbol) {}
+    virtual void next (int symbol) {}
     virtual void expand (layout_type const& layout, std::size_t ip, span_type const& op, std::string& output) {}
     static void append_html (int escape_level, std::string::const_iterator first, std::string::const_iterator last, std::string& output);
     static void append_html (int escape_level, double x, std::string& output);
