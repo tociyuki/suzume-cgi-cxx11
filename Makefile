@@ -1,6 +1,6 @@
 PROGRAM=suzume.cgi
 OBJS=build/main.o build/encode-utf8.o build/mustache.o \
-     build/multipartformdata.o \
+     build/multipartformdata.o build/content-length.o \
      build/urlencoded.o build/runcgi.o
 
 MAIN_DEPS=src/sqlite3pp.hpp src/mustache.hpp \
@@ -8,6 +8,7 @@ MAIN_DEPS=src/sqlite3pp.hpp src/mustache.hpp \
 	 src/suzume_data.hpp src/suzume_view.hpp
 ENCODEUTF8_DEPS=src/encode-utf8.hpp
 MUSTACHE_DEPS=src/mustache.hpp
+CONTENTLEN_DEPS=src/http.hpp
 MULTIAPART_DEPS=src/http.hpp src/encode-utf8.hpp
 URLENCODED_DEPS=src/http.hpp src/encode-utf8.hpp
 RUNCGI_DEPS=src/http.hpp src/runcgi.hpp
@@ -22,26 +23,29 @@ LIBS=-lsqlite3
 all : $(PROGRAM)
 
 $(PROGRAM) : $(OBJS)
-	$(CXX) $(LDFLAGS) -o $(PROGRAM) $(OBJS) $(LIBS)
+	$(CXX) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
 	chmod 755 $(PROGRAM)
 
 build/main.o : src/main.cpp $(MAIN_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/main.o -c src/main.cpp
+	$(CXX) $(CXXFLAGS) -c src/main.cpp -o $@
 
 build/encode-utf8.o : src/encode-utf8.cpp $(ENCODEU8_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/encode-utf8.o -c src/encode-utf8.cpp
+	$(CXX) $(CXXFLAGS) -c src/encode-utf8.cpp -o $@
 
 build/mustache.o : src/mustache.cpp $(MUSTACHE_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/mustache.o -c src/mustache.cpp
+	$(CXX) $(CXXFLAGS) -c src/mustache.cpp -o $@
+
+build/content-length.o : src/content-length.cpp $(CONTENTLEN_DEPS)
+	$(CXX) $(CXXFLAGS) -c src/content-length.cpp -o $@
 
 build/multipartformdata.o : src/multipartformdata.cpp $(MULITPART_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/multipartformdata.o -c src/multipartformdata.cpp
+	$(CXX) $(CXXFLAGS) -c src/multipartformdata.cpp -o $@
 
 build/urlencoded.o : src/urlencoded.cpp $(URLENCODED_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/urlencoded.o -c src/urlencoded.cpp
+	$(CXX) $(CXXFLAGS) -c src/urlencoded.cpp -o $@
 
 build/runcgi.o : src/runcgi.cpp $(RUNCGI_DEPS)
-	$(CXX) $(CXXFLAGS) -o build/runcgi.o -c src/runcgi.cpp
+	$(CXX) $(CXXFLAGS) -c src/runcgi.cpp -o $@
 
 clean :
 	rm -f $(PROGRAM) $(OBJS)

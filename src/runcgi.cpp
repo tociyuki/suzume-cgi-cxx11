@@ -22,7 +22,7 @@ void runcgi (http::appl& app)
         else if (k == "CONTENT_TYPE")
             req.content_type = v;
         else if (k == "CONTENT_LENGTH")
-            req.content_length = v;
+            req.content_length.canonlength (v);
         req.env[k] = v;
     }
     if (req.env.at ("SCRIPT_NAME") == "/") {

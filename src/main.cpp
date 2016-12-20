@@ -46,19 +46,12 @@ struct suzume_appl : public http::appl {
             return get_frontpage (req, res);
         }
         else if (req.method == "POST") {
-            long content_length = 0;
-            try {
-                content_length = std::stoi (req.content_length);
-            }
-            catch (...) {
-                return false;
-            }
-            if (content_length > POST_LIMIT)
+            if (! req.content_length.lt (POST_LIMIT))
                 return false;
             http::formdata formdata;
             if (! formdata.ismultipart (req.content_type))
                 return false;
-            if (! formdata.decode (req.input, content_length))
+            if (! formdata.decode (req.input, req.content_length.to_size ()))
                 return false;
             return post_body (formdata.parameter, req, res);
         }

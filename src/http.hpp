@@ -7,11 +7,19 @@
 
 namespace http {
 
+struct content_length_type {
+    std::string string;
+    std::string status;
+    bool canonlength (std::string const& str);
+    bool lt (std::size_t limit) const;
+    std::size_t to_size (void) const;
+};
+
 struct request {
     std::map<std::string,std::string> env;
     std::string method;
     std::string content_type;
-    std::string content_length;
+    content_length_type content_length;
     FILE* input;
     request ()
         : env (), method (), content_type (), content_length (), input (nullptr) {}
