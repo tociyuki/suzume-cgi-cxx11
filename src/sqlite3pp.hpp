@@ -44,20 +44,24 @@ private:
     std::shared_ptr<struct sqlite3> mdb;
     int mstatus;
 public:
-    connection (std::string s) {
+    connection (std::string s)
+    {
         sqlite3* pdb;
         mstatus = sqlite3_open (s.c_str (), &pdb);
         mdb = std::shared_ptr<struct sqlite3>(pdb, sqlite3_close);
     }
+
     statement prepare (std::string s)
     {
         sqlite3_stmt* stmt;
         mstatus = sqlite3_prepare_v2 (mdb.get (), s.c_str (), s.size (), &stmt, 0);
         return statement (stmt);
     }
+
     int status () { return mstatus; }
     std::string errmsg () { return std::string (sqlite3_errmsg (mdb.get ())); }
     sqlite3_int64 last_insert_rowid () { return sqlite3_last_insert_rowid (mdb.get ()); }
+
     int execute (std::string s)
     {
         sqlite3_stmt* stmt;

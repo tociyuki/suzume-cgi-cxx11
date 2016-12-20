@@ -1,19 +1,18 @@
 #pragma once
 
 #include <string>
-#include <vector>
-#include <map>
 #include <fstream>
+#include "suzume_data.hpp"
 #include "mustache.hpp"
 
 struct suzume_view : public mustache::page_base {
     enum { RECENTS, BODY };
 
-    explicit suzume_view (std::string const& a) : srcname (a) {}
+    explicit suzume_view (suzume_data& a, std::string const& b)
+        : data (a), srcname (b) {}
 
-    bool render (std::vector<std::string>& doc, std::string& output)
+    bool render (std::string& output)
     {
-        m_doc = &doc;
         std::string src;
         if (! slurp (src))
             return false;
@@ -28,28 +27,22 @@ struct suzume_view : public mustache::page_base {
 
     void iter (int symbol)
     {
-        if (RECENTS == symbol) m_index = 0;
+        if (RECENTS == symbol) data.recents_iter ();
     }
 
     void valueof (int symbol, bool& v)
     {
-        if (RECENTS == symbol) v = m_index < m_doc->size ();
-    }
-
-    void next (int symbol)
-    {
-        if (RECENTS == symbol) ++m_index;
+        if (RECENTS == symbol) v = data.recents_step ();
     }
 
     void valueof (int symbol, std::string& v)
     {
-        if (BODY == symbol) v = m_doc->at (m_index);
+        if (BODY == symbol) data.recents_body (v);
     }
 
 private:
+    suzume_data& data;
     std::string const srcname;
-    std::vector<std::string>* m_doc;
-    int m_index;
 
     bool slurp (std::string& src)
     {

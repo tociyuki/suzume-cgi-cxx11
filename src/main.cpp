@@ -12,25 +12,26 @@
 enum { POST_LIMIT = 1024 };
 
 struct suzume_appl : public http::appl {
-    suzume_data data;
-    suzume_view view;
+    std::string dbname;
+    std::string srcname;
 
-    suzume_appl (std::string const& dbname, std::string const& srcname)
-        : data (dbname), view (srcname) {}
+    suzume_appl (std::string const& adbname, std::string const& asrcname)
+        : dbname (adbname), srcname (asrcname) {}
 
     bool get_frontpage (http::request& req, http::response& res)
     {
-        std::vector<std::string> doc;
-        data.recents (doc);
+        suzume_data data (dbname);
+        suzume_view view (data, srcname);
         res.content_type = "text/html; charset=UTF-8";
-        return view.render (doc, res.body);
+        return view.render (res.body);
     }
 
     bool post_body (std::vector<std::string>& param, http::request& req, http::response& res)
     {
-        for (auto i = param.begin (); i < param.end (); i += 2) {
-            if (i[0] == "body") {
-                data.insert (i[1]);
+        suzume_data data (dbname);
+        for (auto it = param.begin (); it != param.end (); it += 2) {
+            if (it[0] == "body") {
+                data.insert (it[1]);
                 res.status = "303";
                 res.location = "suzume.cgi";
                 return true;
