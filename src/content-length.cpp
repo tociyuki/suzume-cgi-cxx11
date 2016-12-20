@@ -51,12 +51,12 @@ content_length_type::canonlength (std::string const& str)
 }
 
 bool
-content_length_type::lt (std::size_t limit) const
+content_length_type::le (std::size_t limit) const
 {
     if (status != "200")
         return false;
     std::string const str2 = std::to_string (limit);
-    return digits_compare (string, 0, string.size (), str2, 0, str2.size ()) < 0;
+    return digits_compare (string, 0, string.size (), str2, 0, str2.size ()) <= 0;
 }
 
 std::size_t

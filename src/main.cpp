@@ -37,7 +37,7 @@ struct suzume_appl : public http::appl {
                 return true;
             }
         }
-        return false;
+        return res.bad_request ();
     }
 
     bool call (http::request& req, http::response& res)
@@ -46,16 +46,16 @@ struct suzume_appl : public http::appl {
             return get_frontpage (req, res);
         }
         else if (req.method == "POST") {
-            if (! req.content_length.lt (POST_LIMIT))
-                return false;
+            if (! req.content_length.le (POST_LIMIT))
+                return res.bad_request ();
             http::formdata formdata;
             if (! formdata.ismultipart (req.content_type))
-                return false;
+                return res.bad_request ();
             if (! formdata.decode (req.input, req.content_length.to_size ()))
-                return false;
+                return res.bad_request ();
             return post_body (formdata.parameter, req, res);
         }
-        return false;
+        return res.bad_request ();
     }
 };
 

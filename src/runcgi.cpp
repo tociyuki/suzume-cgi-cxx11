@@ -5,12 +5,29 @@
 #include "http.hpp"
 #include "runcgi.hpp"
 
-void runcgi (http::appl& app)
+static void req_from_environment (http::request& req);
+static void req_patch_path_info (http::request& req);
+static void res_write_stdout (http::response& res);
+
+void
+runcgi (http::appl& app)
 {
     http::request req;
     http::response res;
     req.input = fdopen (dup (fileno (stdin)), "rb");
-    req.env["PATH_INFO"] = "";
+    req_from_environment (req);
+    req_patch_path_info (req);
+    if (req.content_length.status == "400")
+        res.bad_request ();
+    else if (! app.call (req, res))
+        res.internal_server_error ();
+    fclose (req.input);
+    res_write_stdout (res);
+}
+
+static void
+req_from_environment (http::request& req)
+{
     for (char const* const* p = environ; *p; ++p) {
         char const* eq = std::strchr (*p, '=');
         if (eq == nullptr)
@@ -25,18 +42,22 @@ void runcgi (http::appl& app)
             req.content_length.canonlength (v);
         req.env[k] = v;
     }
+}
+
+static void
+req_patch_path_info (http::request& req)
+{
+    if (req.env.count ("PATH_INFO") == 0)
+        req.env["PATH_INFO"] = "";
     if (req.env.at ("SCRIPT_NAME") == "/") {
         req.env["PATH_INFO"] = req.env["SCRIPT_NAME"] + req.env["PATCH_INFO"];
         req.env["SCRIPT_NAME"] = "";
     }
-    if (! app.call (req, res)) {
-        res.status = "500";
-        res.content_type = "text/plain; charset=UTF-8";
-        res.location.clear ();
-        res.body = "error";
-    }
-    fclose (req.input);
+}
 
+static void
+res_write_stdout (http::response& res)
+{
     FILE* out = fdopen (dup (fileno (stdout)), "wb");
     if (res.status != "200")
         std::fprintf (out, "Status: %s\x0d\x0a", res.status.c_str ());

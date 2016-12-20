@@ -11,7 +11,7 @@ struct content_length_type {
     std::string string;
     std::string status;
     bool canonlength (std::string const& str);
-    bool lt (std::size_t limit) const;
+    bool le (std::size_t limit) const;
     std::size_t to_size (void) const;
 };
 
@@ -44,6 +44,26 @@ struct response {
     response () : headers (), status ("200"),
         content_type ("text/html; charset=utf-8"),
         location (), body () {}
+
+    bool bad_request ()
+    {
+        status = "400";
+        content_type = "text/html; charset=utf-8";
+        location.clear ();
+        body = "<!DOCTYPE html><html><head><title>400 Bad Request</title>"
+               "</head><body><h1>400 Bad Request</h1></body></html>";
+        return true;
+    }
+
+    bool internal_server_error ()
+    {
+        status = "500";
+        content_type = "text/html; charset=utf-8";
+        location.clear ();
+        body = "<!DOCTYPE html><html><head><title>500 Internal Server Error</title>"
+               "</head><body><h1>500 Internal Server Error</h1></body></html>";
+        return true;
+    }
 };
 
 struct appl {
