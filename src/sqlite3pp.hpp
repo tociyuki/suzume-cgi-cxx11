@@ -68,8 +68,6 @@ public:
         mstatus = sqlite3_prepare_v2 (mdb.get (), s.c_str (), s.size (), &stmt, 0);
         if (SQLITE_OK == mstatus)
             mstatus = sqlite3_step (stmt);
-        if (SQLITE_DONE != mstatus && SQLITE_ROW != mstatus)
-            std::cerr << "sqlite3_execute: " << errmsg () << ": " << s << std::endl;
         sqlite3_finalize (stmt);
         return mstatus;
     }

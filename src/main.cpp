@@ -1,9 +1,7 @@
+#include <cstdlib>
+#include <csignal>
 #include <string>
 #include <vector>
-#include <cstdlib>
-#include <iostream>
-#include <sstream>
-#include <csignal>
 #include "suzume_data.hpp"
 #include "suzume_view.hpp"
 #include "http.hpp"

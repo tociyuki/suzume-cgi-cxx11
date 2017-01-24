@@ -18,7 +18,7 @@ content_length_type::canonlength (std::string const& str)
         0x15, 0x55, 0x65, 0x16, 0x66, 0x66, 0x46,
     };
     static const std::size_t NRULE = sizeof (RULE) / sizeof (RULE[0]);
-    status = "400"; // Bad Request
+    status = "400 Bad Request";
     std::size_t c1 = 0, c2 = 0, c3 = 0, c4 = 0;
     int next_state = 2;
     for (std::size_t sp = 0; next_state > 1 && sp <= str.size (); ++sp) {
@@ -29,7 +29,7 @@ content_length_type::canonlength (std::string const& str)
         unsigned int rule = 0 <= i && i < NRULE ? RULE[i] : 0;
         next_state = (rule & 0x0fU) == state ? ((rule & 0xf0U) >> 4) : 0;
         if (2 == state && 1 == next_state) {
-            status = "411"; // Length Required
+            status = "411 Length Required";
             return false;
         }
         else if (4 != state && 4 == next_state) {
@@ -46,14 +46,14 @@ content_length_type::canonlength (std::string const& str)
     if (1 != next_state)
         return false;
     string.assign (str.cbegin () + c1, str.cbegin () + c2);
-    status = "200"; // Ok
+    status = "200 OK";
     return true;
 }
 
 bool
 content_length_type::le (std::size_t limit) const
 {
-    if (status != "200")
+    if (status != "200 OK")
         return false;
     std::string const str2 = std::to_string (limit);
     return digits_compare (string, 0, string.size (), str2, 0, str2.size ()) <= 0;

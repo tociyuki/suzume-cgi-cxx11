@@ -41,13 +41,13 @@ struct response {
     std::string content_type;
     std::string location;
     std::string body;
-    response () : headers (), status ("200"),
+    response () : headers (), status ("200 Ok"),
         content_type ("text/html; charset=utf-8"),
         location (), body () {}
 
     bool bad_request ()
     {
-        status = "400";
+        status = "400 Bad Request";
         content_type = "text/html; charset=utf-8";
         location.clear ();
         body = "<!DOCTYPE html><html><head><title>400 Bad Request</title>"
@@ -57,7 +57,7 @@ struct response {
 
     bool internal_server_error ()
     {
-        status = "500";
+        status = "500 Internal Server Error";
         content_type = "text/html; charset=utf-8";
         location.clear ();
         body = "<!DOCTYPE html><html><head><title>500 Internal Server Error</title>"
