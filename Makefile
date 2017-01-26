@@ -26,6 +26,12 @@ $(PROGRAM) : $(OBJS)
 	$(CXX) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
 	chmod 755 $(PROGRAM)
 
+mustache-test : build/mustache-test.o build/mustache.o
+	$(CXX) $(CXXFLAGS) build/mustache-test.o build/mustache.o -o $@
+
+build/mustache-test.o : src/mustache-test.cpp
+	$(CXX) $(CXXFLAGS) -c src/mustache-test.cpp -o $@
+
 build/main.o : src/main.cpp $(MAIN_DEPS)
 	$(CXX) $(CXXFLAGS) -c src/main.cpp -o $@
 
@@ -48,4 +54,4 @@ build/runcgi.o : src/runcgi.cpp $(RUNCGI_DEPS)
 	$(CXX) $(CXXFLAGS) -c src/runcgi.cpp -o $@
 
 clean :
-	rm -f $(PROGRAM) $(OBJS)
+	rm -f $(PROGRAM) $(OBJS) mustache-test

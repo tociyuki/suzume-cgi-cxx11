@@ -152,7 +152,7 @@ layout_type::expand_block (std::size_t ip, page_base& page, std::string& output)
         else if (CUSTOM == op.element) {
             page.expand (*this, ip, op, output);
         }
-        if ('#' == op.code)
+        if ('#' == op.code || '^' == op.code)
             ip += op.size + 1;
     }
 }
@@ -221,6 +221,8 @@ layout_type::match (std::size_t const pos, span_type& op) const
     std::size_t dot = pos;
     int next_state = 2;
     op.code = '$';
+    op.symbol = 0;
+    op.element = 0;
     op.size = 0;
     for (; next_state > 1 && dot < m_source.size (); ++dot) {
         int const ch = static_cast<unsigned char> (m_source[dot]);
